@@ -1,12 +1,12 @@
 /*
  *     Copyright (C) 2026 Valeri Gokadze
  *
- *     Musify is free software: you can redistribute it and/or modify
+ *     Ritmoo is free software: you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
  *     the Free Software Foundation, either version 3 of the License, or
  *     (at your option) any later version.
  *
- *     Musify is distributed in the hope that it will be useful,
+ *     Ritmoo is distributed in the hope that it will be useful,
  *     but WITHOUT ANY WARRANTY; without even the implied warranty of
  *     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *     GNU General Public License for more details.
@@ -15,19 +15,19 @@
  *     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  *
- *     For more information about Musify, including how to contribute,
- *     please visit: https://github.com/gokadzev/Musify
+ *     For more information about Ritmoo, including how to contribute,
+ *     please visit: https://github.com/gokadzev/Ritmoo
  */
 
 import 'package:audio_service/audio_service.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_flip_card/flutter_flip_card.dart';
-import 'package:musify/main.dart';
-import 'package:musify/widgets/now_playing/bottom_actions_row.dart';
-import 'package:musify/widgets/now_playing/now_playing_artwork.dart';
-import 'package:musify/widgets/now_playing/now_playing_controls.dart';
-import 'package:musify/widgets/queue_list_view.dart';
+import 'package:ritmoo/main.dart';
+import 'package:ritmoo/widgets/now_playing/bottom_actions_row.dart';
+import 'package:ritmoo/widgets/now_playing/now_playing_artwork.dart';
+import 'package:ritmoo/widgets/now_playing/now_playing_controls.dart';
+import 'package:ritmoo/widgets/queue_list_view.dart';
 
 class NowPlayingPage extends StatefulWidget {
   const NowPlayingPage({super.key});
@@ -62,7 +62,19 @@ class _NowPlayingPageState extends State<NowPlayingPage> {
             if (snapshot.data == null || !snapshot.hasData) {
               return const Center(child: CircularProgressIndicator());
             }
-            final metadata = snapshot.data!;
+            final metadata = snapshot.data;
+            if (metadata == null) {
+              return Column(
+                children: [
+                  _buildAppBar(context, colorScheme),
+                  const Expanded(
+                    child: Center(
+                      child: CircularProgressIndicator(),
+                    ),
+                  ),
+                ],
+              );
+            }
             return Column(
               children: [
                 _buildAppBar(context, colorScheme),

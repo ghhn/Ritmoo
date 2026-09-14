@@ -24,11 +24,11 @@ class YoutubeHttpClient extends http.BaseClient {
 
   static const Map<String, String> defaultHeaders = {
     'user-agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.18 Safari/537.36',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
     'cookie': 'CONSENT=YES+cb',
     'accept':
-        'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9',
-    'accept-language': 'en-US,en;q=0.5',
+        'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+    'accept-language': 'en-US,en;q=0.9',
   };
 
   /// For any custom YoutubeHttpClient to override headers easily
@@ -302,10 +302,10 @@ class YoutubeHttpClient extends http.BaseClient {
       'context': const {
         'client': {
           'browserName': 'Chrome',
-          'browserVersion': '105.0.0.0',
+          'browserVersion': '133.0.0.0',
           'clientFormFactor': 'UNKNOWN_FORM_FACTOR',
-          'clientName': "WEB",
-          'clientVersion': "2.20220921.00.00",
+          'clientName': 'WEB',
+          'clientVersion': '2.20250312.04.00',
         },
       },
       ...data,

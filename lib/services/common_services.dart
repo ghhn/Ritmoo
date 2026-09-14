@@ -1,12 +1,12 @@
 /*
  *     Copyright (C) 2026 Valeri Gokadze
  *
- *     Musify is free software: you can redistribute it and/or modify
+ *     Ritmoo is free software: you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
  *     the Free Software Foundation, either version 3 of the License, or
  *     (at your option) any later version.
  *
- *     Musify is distributed in the hope that it will be useful,
+ *     Ritmoo is distributed in the hope that it will be useful,
  *     but WITHOUT ANY WARRANTY; without even the implied warranty of
  *     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *     GNU General Public License for more details.
@@ -15,8 +15,8 @@
  *     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  *
- *     For more information about Musify, including how to contribute,
- *     please visit: https://github.com/gokadzev/Musify
+ *     For more information about Ritmoo, including how to contribute,
+ *     please visit: https://github.com/gokadzev/Ritmoo
  */
 
 import 'dart:async';
@@ -26,16 +26,18 @@ import 'dart:io';
 import 'package:flutter/widgets.dart';
 import 'package:hive/hive.dart';
 import 'package:http/http.dart' as http;
-import 'package:musify/constants/clients.dart';
-import 'package:musify/main.dart' show logger;
-import 'package:musify/services/data_manager.dart';
-import 'package:musify/services/io_service.dart';
-import 'package:musify/services/lyrics_manager.dart';
-import 'package:musify/services/playlists_manager.dart';
-import 'package:musify/services/proxy_manager.dart';
-import 'package:musify/services/settings_manager.dart';
-import 'package:musify/utilities/app_utils.dart';
-import 'package:musify/utilities/formatter.dart';
+import 'package:ritmoo/constants/clients.dart';
+import 'package:ritmoo/database/playlists.db.dart';
+import 'package:ritmoo/database/sample_songs.db.dart';
+import 'package:ritmoo/main.dart' show logger;
+import 'package:ritmoo/services/data_manager.dart';
+import 'package:ritmoo/services/io_service.dart';
+import 'package:ritmoo/services/lyrics_manager.dart';
+import 'package:ritmoo/services/playlists_manager.dart';
+import 'package:ritmoo/services/proxy_manager.dart';
+import 'package:ritmoo/services/settings_manager.dart';
+import 'package:ritmoo/utilities/app_utils.dart';
+import 'package:ritmoo/utilities/formatter.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
 List globalSongs = [];
@@ -62,18 +64,79 @@ final lyrics = ValueNotifier<String?>(null);
 String? lastFetchedLyrics;
 
 // Timeouts and durations used across manifest fetching and cache validation.
-const Duration _manifestTimeout = Duration(seconds: 30);
+const Duration _manifestTimeout = Duration(seconds: 20);
+const Duration _perClientTimeout = Duration(seconds: 12);
 const Duration _cacheValidationDuration = Duration(hours: 1);
 
+// Ordered fallback clients to try when the primary list fails.
+final _fallbackClients = [
+  YoutubeApiClient.ios,
+  YoutubeApiClient.androidVr,
+  YoutubeApiClient.androidSdkless,
+  YoutubeApiClient.androidMusic,
+  YoutubeApiClient.tv,
+  YoutubeApiClient.android,
+  YoutubeApiClient.mweb,
+];
+
 /// Fetches a stream manifest for a song, honoring proxy settings.
+/// Tries the configured client list first, then falls back to individual
+/// clients one by one to maximize success rate.
 Future<StreamManifest?> _fetchStreamManifest(String songId) async {
   if (useProxy.value) {
     return ProxyManager().getSongManifest(songId).timeout(_manifestTimeout);
   }
 
-  return ytClient.videos.streams
-      .getManifest(songId, ytClients: customClients)
-      .timeout(_manifestTimeout);
+  // Fast direct attempt: bypasses scraping the web watch page
+  try {
+    final result = await ytClient.videos.streams
+        .getManifest(songId, ytClients: customClients, requireWatchPage: false)
+        .timeout(_manifestTimeout);
+    // Validate that the manifest actually contains audio streams
+    if (result.audioOnly.isNotEmpty) return result;
+    logger.log('Fast direct attempt returned empty audio streams for $songId, continuing...');
+  } catch (e) {
+    logger.log('Fast direct client list failed for $songId, trying standard: $e');
+  }
+
+  // Standard attempt: with watch page if deciphering is needed
+  try {
+    final result = await ytClient.videos.streams
+        .getManifest(songId, ytClients: customClients)
+        .timeout(_manifestTimeout);
+    // Validate that the manifest actually contains audio streams
+    if (result.audioOnly.isNotEmpty) return result;
+    logger.log('Primary attempt returned empty audio streams for $songId, trying fallbacks...');
+  } catch (e) {
+    logger.log('Primary client list failed for $songId, trying fallbacks: $e');
+  }
+
+  // Fallback: try each client individually
+  for (final client in _fallbackClients) {
+    try {
+      final result = await ytClient.videos.streams
+          .getManifest(songId, ytClients: [client], requireWatchPage: false)
+          .timeout(_perClientTimeout);
+      if (result.audioOnly.isNotEmpty) {
+        logger.log('Fallback client succeeded for $songId');
+        return result;
+      }
+    } catch (_) {
+      try {
+        final resultWithWatchPage = await ytClient.videos.streams
+            .getManifest(songId, ytClients: [client])
+            .timeout(_perClientTimeout);
+        if (resultWithWatchPage.audioOnly.isNotEmpty) {
+          logger.log('Fallback client with watch page succeeded for $songId');
+          return resultWithWatchPage;
+        }
+      } catch (e) {
+        logger.log('Fallback client failed for $songId: $e');
+      }
+    }
+  }
+
+  return null;
 }
 
 /// Returns a cached song URL if present and still valid.
@@ -91,7 +154,10 @@ Future<String?> _getCachedSongUrl(
     return null;
   }
 
-  final cacheBox = await Hive.openBox('cache');
+  // Use Hive.box (not openBox) — the 'cache' box is already open since
+  // initialisation() in main.dart. Calling openBox again can cause
+  // race conditions and unnecessary async overhead.
+  final cacheBox = Hive.box('cache');
   final cacheDate = cacheBox.get('${cacheKey}_date') as DateTime?;
   final now = DateTime.now();
   final isOld =
@@ -111,10 +177,14 @@ Future<String?> _getCachedSongUrl(
 }
 
 /// Checks if a cached URL still responds successfully.
+/// Note: YouTube CDN often returns 403 on HEAD requests even for valid stream URLs,
+/// so we accept 403 as potentially valid and let the player handle actual playback errors.
 Future<bool> _validateCachedUrl(String cachedUrl) async {
   try {
     final response = await http.head(Uri.parse(cachedUrl));
-    return response.statusCode >= 200 && response.statusCode < 300;
+    // Accept 2xx AND 403 (YouTube CDN blocks HEAD but stream may still be playable)
+    return response.statusCode >= 200 && response.statusCode < 300 ||
+        response.statusCode == 403;
   } catch (_) {
     return false;
   }
@@ -177,14 +247,23 @@ Future<List> _getRecommendationsFromRecentlyPlayed() async {
   return playlistSongs;
 }
 
+List latinSongs = [];
+
 Future<List> _getRecommendationsFromMixedSources() async {
   final playlistSongs = [...userLikedSongsList, ...userRecentlyPlayed];
 
   if (globalSongs.isEmpty) {
-    const playlistId = 'PLgzTt0k8mXzEk586ze4BjvDXR7c-TUSnx';
+    const playlistId = 'PLgzTt0k8mXzEk586ze4BjvDXR7c-TUSnx'; // Global / English Trending
     globalSongs = await getSongsFromPlaylist(playlistId);
   }
-  playlistSongs.addAll(globalSongs.take(10));
+  if (latinSongs.isEmpty) {
+    const latinPlaylistId = 'PL3-sRm8WVJLPx2jV4s_y8qU9R0U3S-29d'; // Spanish / Latino Trending
+    latinSongs = await getSongsFromPlaylist(latinPlaylistId);
+  }
+
+  playlistSongs
+    ..addAll(globalSongs.take(8))
+    ..addAll(latinSongs.take(8));
 
   if (userCustomPlaylists.value.isNotEmpty) {
     for (final userPlaylist in userCustomPlaylists.value) {
@@ -196,18 +275,34 @@ Future<List> _getRecommendationsFromMixedSources() async {
   return _deduplicateAndShuffle(playlistSongs);
 }
 
+List<Map<String, dynamic>> getSampleSongs({int? limit}) {
+  final list = List<Map<String, dynamic>>.from(sampleSongsDB);
+  if (limit != null && limit > 0) {
+    return list.take(limit).toList();
+  }
+  return list;
+}
+
 List _deduplicateAndShuffle(List playlistSongs) {
   final seenYtIds = <String>{};
   final uniqueSongs = <Map>[];
 
-  playlistSongs.shuffle();
+  final songsToProcess =
+      (playlistSongs.isNotEmpty
+            ? List.from(playlistSongs)
+            : List.from(sampleSongsDB))
+        ..shuffle();
 
-  for (final song in playlistSongs) {
+  for (final song in songsToProcess) {
     if (song['ytid'] != null && seenYtIds.add(song['ytid'])) {
       uniqueSongs.add(song);
       // Early exit when we have enough songs
       if (uniqueSongs.length >= 15) break;
     }
+  }
+
+  if (uniqueSongs.isEmpty) {
+    return List<Map<String, dynamic>>.from(sampleSongsDB);
   }
 
   return uniqueSongs;
@@ -380,20 +475,39 @@ Future<List<Map<String, int>>> getSkipSegments(String id) async {
 
 Future<void> getSimilarSong(String songYtId) async {
   try {
-    final song = await ytClient.videos.get(songYtId);
-    final relatedSongs = await ytClient.videos.getRelatedVideos(song) ?? [];
+    if (!offlineMode.value) {
+      final song = await ytClient.videos.get(songYtId);
+      final relatedSongs = await ytClient.videos.getRelatedVideos(song) ?? [];
 
-    if (relatedSongs.isNotEmpty) {
-      nextRecommendedSong = returnSongLayout(0, relatedSongs[0]);
-    } else {
-      logger.log('No related songs found for $songYtId');
+      if (relatedSongs.isNotEmpty) {
+        nextRecommendedSong = returnSongLayout(0, relatedSongs[0]);
+        return;
+      }
     }
   } catch (e, stackTrace) {
     logger.log(
-      'Error while fetching next similar song:',
+      'Error while fetching next similar song from YouTube:',
       error: e,
       stackTrace: stackTrace,
     );
+  }
+
+  // Fallback to related songs from playlistsDB and sampleSongsDB
+  try {
+    final pool = <Map>[];
+    for (final p in playlistsDB) {
+      final pList = p['list'] as List? ?? [];
+      for (final s in pList) {
+        if (s is Map && s['ytid'] != songYtId) pool.add(s);
+      }
+    }
+    pool.addAll(sampleSongsDB.where((s) => s['ytid'] != songYtId));
+    if (pool.isNotEmpty) {
+      pool.shuffle();
+      nextRecommendedSong = pool.first;
+    }
+  } catch (e) {
+    logger.log('Fallback similar song selection failed: $e');
   }
 }
 

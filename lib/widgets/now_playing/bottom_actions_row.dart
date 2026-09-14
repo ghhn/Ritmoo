@@ -1,12 +1,12 @@
 /*
  *     Copyright (C) 2026 Valeri Gokadze
  *
- *     Musify is free software: you can redistribute it and/or modify
+ *     Ritmoo is free software: you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
  *     the Free Software Foundation, either version 3 of the License, or
  *     (at your option) any later version.
  *
- *     Musify is distributed in the hope that it will be useful,
+ *     Ritmoo is distributed in the hope that it will be useful,
  *     but WITHOUT ANY WARRANTY; without even the implied warranty of
  *     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *     GNU General Public License for more details.
@@ -15,22 +15,23 @@
  *     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  *
- *     For more information about Musify, including how to contribute,
- *     please visit: https://github.com/gokadzev/Musify
+ *     For more information about Ritmoo, including how to contribute,
+ *     please visit: https://github.com/gokadzev/Ritmoo
  */
 
 import 'package:audio_service/audio_service.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:flutter/material.dart';
-import 'package:musify/extensions/l10n.dart';
-import 'package:musify/main.dart';
-import 'package:musify/services/common_services.dart';
-import 'package:musify/services/settings_manager.dart';
-import 'package:musify/utilities/flutter_bottom_sheet.dart';
-import 'package:musify/utilities/flutter_toast.dart';
-import 'package:musify/utilities/mediaitem.dart';
-import 'package:musify/utilities/playlist_dialogs.dart';
-import 'package:musify/widgets/queue_list_view.dart';
+import 'package:ritmoo/extensions/l10n.dart';
+import 'package:ritmoo/main.dart';
+import 'package:ritmoo/services/common_services.dart';
+import 'package:ritmoo/services/playlists_manager.dart';
+import 'package:ritmoo/services/settings_manager.dart';
+import 'package:ritmoo/utilities/flutter_bottom_sheet.dart';
+import 'package:ritmoo/utilities/flutter_toast.dart';
+import 'package:ritmoo/utilities/mediaitem.dart';
+import 'package:ritmoo/utilities/playlist_dialogs.dart';
+import 'package:ritmoo/widgets/queue_list_view.dart';
 
 class BottomActionsRow extends StatefulWidget {
   const BottomActionsRow({
@@ -113,6 +114,18 @@ class _BottomActionsRowState extends State<BottomActionsRow> {
             tooltip: l10n.makeOffline,
           ),
           _buildSleepTimerButton(context, colorScheme, responsiveIconSize),
+          if (!offlineMode.value)
+            _buildSimpleActionButton(
+              context: context,
+              icon: FluentIcons.radio_button_24_regular,
+              colorScheme: colorScheme,
+              size: responsiveIconSize,
+              onPressed: () => startMixRadio(
+                context,
+                seedSong: mediaItemToMap(widget.metadata),
+              ),
+              tooltip: l10n.startMixRadio,
+            ),
           if (!offlineMode.value)
             _buildSimpleActionButton(
               context: context,

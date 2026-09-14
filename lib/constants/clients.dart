@@ -1,21 +1,17 @@
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
-final customClients = [customAndroidVr];
+// Multiple clients in priority order. When one fails, the next is tried.
+// ios and androidVr avoid PO Token requirements and 403 Forbidden errors on YouTube CDN.
+final customClients = [
+  YoutubeApiClient.ios,
+  YoutubeApiClient.androidVr,
+  YoutubeApiClient.androidSdkless,
+  YoutubeApiClient.androidMusic,
+  YoutubeApiClient.tv,
+  YoutubeApiClient.android,
+  YoutubeApiClient.mweb,
+];
 
-const customAndroidVr = YoutubeApiClient({
-  'context': {
-    'client': {
-      'clientName': 'ANDROID_VR',
-      'clientVersion': '1.65.10',
-      'deviceModel': 'Quest 3',
-      'osVersion': '12L',
-      'osName': 'Android',
-      'androidSdkVersion': '32',
-      'hl': 'en',
-      'timeZone': 'UTC',
-      'utcOffsetMinutes': 0,
-    },
-    'contextClientName': 28,
-    'requireJsPlayer': false,
-  },
-}, 'https://www.youtube.com/youtubei/v1/player?prettyPrint=false');
+// Legacy single client kept for manifest fetches that accept a list.
+const customAndroidVr = YoutubeApiClient.androidVr;
+

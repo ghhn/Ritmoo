@@ -1,12 +1,12 @@
 /*
  *     Copyright (C) 2026 Valeri Gokadze
  *
- *     Musify is free software: you can redistribute it and/or modify
+ *     Ritmoo is free software: you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
  *     the Free Software Foundation, either version 3 of the License, or
  *     (at your option) any later version.
  *
- *     Musify is distributed in the hope that it will be useful,
+ *     Ritmoo is distributed in the hope that it will be useful,
  *     but WITHOUT ANY WARRANTY; without even the implied warranty of
  *     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *     GNU General Public License for more details.
@@ -15,8 +15,8 @@
  *     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  *
- *     For more information about Musify, including how to contribute,
- *     please visit: https://github.com/gokadzev/Musify
+ *     For more information about Ritmoo, including how to contribute,
+ *     please visit: https://github.com/gokadzev/Ritmoo
  */
 
 import 'dart:math' as math;
@@ -24,12 +24,13 @@ import 'dart:math' as math;
 import 'package:audio_service/audio_service.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:flutter/material.dart';
-import 'package:musify/main.dart';
-import 'package:musify/models/full_player_state.dart';
-import 'package:musify/models/position_data.dart';
-import 'package:musify/screens/now_playing_page.dart';
-import 'package:musify/widgets/marquee.dart';
-import 'package:musify/widgets/song_artwork.dart';
+import 'package:flutter/services.dart';
+import 'package:ritmoo/main.dart';
+import 'package:ritmoo/models/full_player_state.dart';
+import 'package:ritmoo/models/position_data.dart';
+import 'package:ritmoo/screens/now_playing_page.dart';
+import 'package:ritmoo/widgets/marquee.dart';
+import 'package:ritmoo/widgets/song_artwork.dart';
 import 'package:rxdart/rxdart.dart';
 
 final Stream<FullPlayerState> _fullPlayerStateStream = Rx.combineLatest3(
@@ -135,6 +136,7 @@ class _MiniPlayerBodyState extends State<_MiniPlayerBody>
   }
 
   void _navigateToNowPlaying() {
+    HapticFeedback.lightImpact();
     Navigator.of(context).push(_createSlideTransition());
   }
 
@@ -190,44 +192,56 @@ class _MiniPlayerBodyState extends State<_MiniPlayerBody>
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(MiniPlayer._borderRadius),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                  child: Row(
-                    children: [
-                      _ArtworkWidget(metadata: metadata),
-                      Expanded(
-                        child: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 300),
-                          switchInCurve: Curves.easeIn,
-                          switchOutCurve: Curves.easeOut,
-                          layoutBuilder: (currentChild, previousChildren) =>
-                              Stack(
-                                alignment: Alignment.centerLeft,
-                                children: [
-                                  ...previousChildren,
-                                  if (currentChild != null) currentChild,
-                                ],
+                child: Column(
+                  children: [
+                    LinearProgressIndicator(
+                      value: progress,
+                      minHeight: 2.5,
+                      backgroundColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                      valueColor: AlwaysStoppedAnimation<Color>(colorScheme.primary),
+                    ),
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        child: Row(
+                          children: [
+                            _ArtworkWidget(metadata: metadata),
+                            Expanded(
+                              child: AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 300),
+                                switchInCurve: Curves.easeIn,
+                                switchOutCurve: Curves.easeOut,
+                                layoutBuilder: (currentChild, previousChildren) =>
+                                    Stack(
+                                      alignment: Alignment.centerLeft,
+                                      children: [
+                                        ...previousChildren,
+                                        if (currentChild != null) currentChild,
+                                      ],
+                                    ),
+                                transitionBuilder: (child, animation) =>
+                                    FadeTransition(opacity: animation, child: child),
+                                child: KeyedSubtree(
+                                  key: ValueKey(metadata.id),
+                                  child: _MetadataWidget(
+                                    title: metadata.title,
+                                    artist: metadata.artist,
+                                    colorScheme: colorScheme,
+                                  ),
+                                ),
                               ),
-                          transitionBuilder: (child, animation) =>
-                              FadeTransition(opacity: animation, child: child),
-                          child: KeyedSubtree(
-                            key: ValueKey(metadata.id),
-                            child: _MetadataWidget(
-                              title: metadata.title,
-                              artist: metadata.artist,
-                              colorScheme: colorScheme,
                             ),
-                          ),
+                            _ControlsWidget(
+                              colorScheme: colorScheme,
+                              playbackState: state.playbackState,
+                              hasNext: widget.hasNext,
+                              progress: progress,
+                            ),
+                          ],
                         ),
                       ),
-                      _ControlsWidget(
-                        colorScheme: colorScheme,
-                        playbackState: state.playbackState,
-                        hasNext: widget.hasNext,
-                        progress: progress,
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             ),

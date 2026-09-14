@@ -42,15 +42,20 @@ class PlaylistClient {
     while (page != null) {
       for (final video in page.videos) {
         // Track every ID we've seen, even filtered ones, so the loop terminates.
+        if (video.id.isEmpty) continue;
         if (!encounteredVideoIds.add(video.id)) continue;
-        if (video.channelId.isEmpty) continue;
+
+        final rawChannelId = video.channelId;
+        final channelIdObj = ChannelId.validateChannelId(rawChannelId)
+            ? ChannelId(rawChannelId)
+            : ChannelId('UC0000000000000000000000');
 
         yield Video(
           VideoId(video.id),
           video.title,
           video.author,
-          ChannelId(video.channelId),
-          video.uploadDateRaw.toDateTime(),
+          channelIdObj,
+          video.uploadDateRaw?.toDateTime(),
           video.uploadDateRaw,
           null,
           video.description,

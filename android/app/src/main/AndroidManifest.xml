@@ -1,13 +1,14 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    package="com.gokadzev.musify">
+    package="com.gokadzev.ritmoo">
 
-
+1
     <!-- Permissions -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"  />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Queries for Android 11+ -->
     <queries>
@@ -30,9 +31,11 @@
     </queries>
 
     <application
-        android:label="Musify"
+        android:label="Ritmoo"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:usesCleartextTraffic="true"
         android:enableOnBackInvokedCallback="true"
         android:extractNativeLibs="true"
         tools:replace="android:extractNativeLibs">
@@ -70,7 +73,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
-                    android:scheme="musify"
+                    android:scheme="ritmoo"
                     android:host="playlist"
                     android:pathPattern="/custom/.*" />
             </intent-filter>

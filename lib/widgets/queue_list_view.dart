@@ -1,12 +1,12 @@
 /*
  *     Copyright (C) 2026 Valeri Gokadze
  *
- *     Musify is free software: you can redistribute it and/or modify
+ *     Ritmoo is free software: you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
  *     the Free Software Foundation, either version 3 of the License, or
  *     (at your option) any later version.
  *
- *     Musify is distributed in the hope that it will be useful,
+ *     Ritmoo is distributed in the hope that it will be useful,
  *     but WITHOUT ANY WARRANTY; without even the implied warranty of
  *     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *     GNU General Public License for more details.
@@ -15,8 +15,8 @@
  *     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  *
- *     For more information about Musify, including how to contribute,
- *     please visit: https://github.com/gokadzev/Musify
+ *     For more information about Ritmoo, including how to contribute,
+ *     please visit: https://github.com/gokadzev/Ritmoo
  */
 
 import 'dart:async';
@@ -25,10 +25,10 @@ import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:flutter/material.dart';
-import 'package:musify/extensions/l10n.dart';
-import 'package:musify/main.dart';
-import 'package:musify/widgets/confirmation_dialog.dart';
-import 'package:musify/widgets/no_artwork_cube.dart';
+import 'package:ritmoo/extensions/l10n.dart';
+import 'package:ritmoo/main.dart';
+import 'package:ritmoo/widgets/confirmation_dialog.dart';
+import 'package:ritmoo/widgets/no_artwork_cube.dart';
 
 class QueueWidget extends StatefulWidget {
   const QueueWidget({super.key, this.isBottomSheet = false});
@@ -288,8 +288,7 @@ class _QueueWidgetState extends State<QueueWidget> {
       buildDefaultDragHandles: false,
       padding: const EdgeInsets.only(top: 4, bottom: 24, left: 8, right: 8),
       itemCount: _queue.length,
-      onReorder: (oldIndex, newIndex) {
-        if (newIndex > oldIndex) newIndex--;
+      onReorderItem: (oldIndex, newIndex) {
         setState(() {
           final item = _queue.removeAt(oldIndex);
           _queue.insert(newIndex, item);

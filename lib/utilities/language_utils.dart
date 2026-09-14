@@ -1,5 +1,5 @@
 import 'package:flutter/widgets.dart';
-import 'package:musify/localization/app_localizations.dart';
+import 'package:ritmoo/localization/app_localizations.dart';
 
 // Supported app language codes.
 const appLanguages = <String>{
@@ -87,8 +87,19 @@ String getLanguageDisplayName(BuildContext context, String languageCode) {
 }
 
 Locale getLocaleFromLanguageCode(String? languageCode) {
-  // Early return for null case
-  if (languageCode == null) {
+  // If null or 'system', detect device system language automatically
+  if (languageCode == null || languageCode == 'system') {
+    final systemLocale = WidgetsBinding.instance.platformDispatcher.locale;
+    final deviceLang = systemLocale.languageCode;
+
+    for (final locale in appSupportedLocales) {
+      if (locale.languageCode == deviceLang) {
+        if (systemLocale.scriptCode != null && locale.scriptCode == systemLocale.scriptCode) {
+          return locale;
+        }
+        return Locale(deviceLang);
+      }
+    }
     return const Locale('en');
   }
 

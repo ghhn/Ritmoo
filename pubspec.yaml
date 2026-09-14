@@ -1,4 +1,4 @@
-name: musify
+name: ritmoo
 description: Music Streaming app made in Flutter!
 homepage: https://github.com/gokadzev/Musify
 repository: https://github.com/gokadzev/Musify
@@ -52,6 +52,7 @@ flutter:
   # To add assets to your application, add an assets section, like this:
   assets:
     - assets/licenses/
+    - assets/images/
 
   fonts:
     - family: paytoneOne

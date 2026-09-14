@@ -1,12 +1,12 @@
 /*
  *     Copyright (C) 2026 Valeri Gokadze
  *
- *     Musify is free software: you can redistribute it and/or modify
+ *     Ritmoo is free software: you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
  *     the Free Software Foundation, either version 3 of the License, or
  *     (at your option) any later version.
  *
- *     Musify is distributed in the hope that it will be useful,
+ *     Ritmoo is distributed in the hope that it will be useful,
  *     but WITHOUT ANY WARRANTY; without even the implied warranty of
  *     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *     GNU General Public License for more details.
@@ -15,8 +15,8 @@
  *     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  *
- *     For more information about Musify, including how to contribute,
- *     please visit: https://github.com/gokadzev/Musify
+ *     For more information about Ritmoo, including how to contribute,
+ *     please visit: https://github.com/gokadzev/Ritmoo
  */
 
 import 'dart:async';
@@ -30,26 +30,26 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:musify/extensions/l10n.dart';
-import 'package:musify/localization/app_localizations.dart';
-import 'package:musify/services/audio_service.dart';
-import 'package:musify/services/data_manager.dart';
-import 'package:musify/services/io_service.dart';
-import 'package:musify/services/logger_service.dart';
-import 'package:musify/services/playlist_sharing.dart';
-import 'package:musify/services/playlists_manager.dart';
-import 'package:musify/services/router_service.dart';
-import 'package:musify/services/settings_manager.dart';
-import 'package:musify/services/update_manager.dart';
-import 'package:musify/theme/app_themes.dart';
-import 'package:musify/utilities/flutter_toast.dart';
-import 'package:musify/utilities/language_utils.dart';
-import 'package:musify/utilities/playlist_utils.dart';
-import 'package:musify/utilities/sharing_intent.dart';
+import 'package:ritmoo/extensions/l10n.dart';
+import 'package:ritmoo/localization/app_localizations.dart';
+import 'package:ritmoo/services/audio_service.dart';
+import 'package:ritmoo/services/data_manager.dart';
+import 'package:ritmoo/services/io_service.dart';
+import 'package:ritmoo/services/logger_service.dart';
+import 'package:ritmoo/services/playlist_sharing.dart';
+import 'package:ritmoo/services/playlists_manager.dart';
+import 'package:ritmoo/services/router_service.dart';
+import 'package:ritmoo/services/settings_manager.dart';
+import 'package:ritmoo/services/update_manager.dart';
+import 'package:ritmoo/theme/app_themes.dart';
+import 'package:ritmoo/utilities/flutter_toast.dart';
+import 'package:ritmoo/utilities/language_utils.dart';
+import 'package:ritmoo/utilities/playlist_utils.dart';
+import 'package:ritmoo/utilities/sharing_intent.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 
-late MusifyAudioHandler audioHandler;
+late RitmooAudioHandler audioHandler;
 late StreamSubscription<String?> sharingIntentSubscription;
 
 final logger = Logger();
@@ -58,8 +58,8 @@ final appLinks = AppLinks();
 bool isFdroidBuild = false;
 bool isUpdateChecked = false;
 
-class Musify extends StatefulWidget {
-  const Musify({super.key});
+class Ritmoo extends StatefulWidget {
+  const Ritmoo({super.key});
 
   static Future<void> updateAppState(
     BuildContext context, {
@@ -68,7 +68,7 @@ class Musify extends StatefulWidget {
     Color? newAccentColor,
     bool? useSystemColor,
   }) async {
-    context.findAncestorStateOfType<_MusifyState>()!.changeSettings(
+    context.findAncestorStateOfType<_RitmooState>()!.changeSettings(
       newThemeMode: newThemeMode,
       newLocale: newLocale,
       newAccentColor: newAccentColor,
@@ -77,10 +77,10 @@ class Musify extends StatefulWidget {
   }
 
   @override
-  _MusifyState createState() => _MusifyState();
+  _RitmooState createState() => _RitmooState();
 }
 
-class _MusifyState extends State<Musify> {
+class _RitmooState extends State<Ritmoo> {
   void changeSettings({
     ThemeMode? newThemeMode,
     Locale? newLocale,
@@ -225,6 +225,7 @@ class _MusifyState extends State<Musify> {
                 : Brightness.dark,
           ),
           child: MaterialApp.router(
+            debugShowCheckedModeBanner: false,
             themeMode: themeMode,
             darkTheme: getAppTheme(colorScheme),
             theme: getAppTheme(colorScheme),
@@ -248,7 +249,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initialisation();
 
-  runApp(const Musify());
+  runApp(const Ritmoo());
 }
 
 Future<void> initialisation() async {
@@ -263,10 +264,10 @@ Future<void> initialisation() async {
     ]);
 
     audioHandler = await AudioService.init(
-      builder: MusifyAudioHandler.new,
+      builder: RitmooAudioHandler.new,
       config: const AudioServiceConfig(
-        androidNotificationChannelId: 'com.gokadzev.musify',
-        androidNotificationChannelName: 'Musify',
+        androidNotificationChannelId: 'com.gokadzev.ritmoo',
+        androidNotificationChannelName: 'Ritmoo',
         androidNotificationIcon: 'drawable/ic_launcher_foreground',
         androidShowNotificationBadge: true,
         androidStopForegroundOnPause: false,
@@ -300,7 +301,7 @@ Future<void> initialisation() async {
 }
 
 void handleIncomingLink(Uri? uri) async {
-  if (uri != null && uri.scheme == 'musify' && uri.host == 'playlist') {
+  if (uri != null && uri.scheme == 'ritmoo' && uri.host == 'playlist') {
     try {
       if (uri.pathSegments[0] == 'custom') {
         final encodedPlaylist = uri.pathSegments[1];

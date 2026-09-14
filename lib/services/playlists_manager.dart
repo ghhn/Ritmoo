@@ -1,12 +1,12 @@
 /*
  *     Copyright (C) 2026 Valeri Gokadze
  *
- *     Musify is free software: you can redistribute it and/or modify
+ *     Ritmoo is free software: you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
  *     the Free Software Foundation, either version 3 of the License, or
  *     (at your option) any later version.
  *
- *     Musify is distributed in the hope that it will be useful,
+ *     Ritmoo is distributed in the hope that it will be useful,
  *     but WITHOUT ANY WARRANTY; without even the implied warranty of
  *     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *     GNU General Public License for more details.
@@ -15,26 +15,27 @@
  *     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  *
- *     For more information about Musify, including how to contribute,
- *     please visit: https://github.com/gokadzev/Musify
+ *     For more information about Ritmoo, including how to contribute,
+ *     please visit: https://github.com/gokadzev/Ritmoo
  */
 
 import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 import 'package:hive/hive.dart';
-import 'package:musify/database/albums.db.dart';
-import 'package:musify/database/playlists.db.dart';
-import 'package:musify/extensions/l10n.dart';
-import 'package:musify/main.dart' show logger;
-import 'package:musify/services/data_manager.dart';
-import 'package:musify/services/playlist_download_service.dart';
-import 'package:musify/services/proxy_manager.dart';
-import 'package:musify/services/settings_manager.dart';
-import 'package:musify/utilities/app_utils.dart';
-import 'package:musify/utilities/flutter_toast.dart';
-import 'package:musify/utilities/formatter.dart';
-import 'package:musify/utilities/playlist_utils.dart';
+import 'package:ritmoo/database/albums.db.dart';
+import 'package:ritmoo/database/playlists.db.dart';
+import 'package:ritmoo/database/sample_songs.db.dart';
+import 'package:ritmoo/extensions/l10n.dart';
+import 'package:ritmoo/main.dart' show audioHandler, logger;
+import 'package:ritmoo/services/data_manager.dart';
+import 'package:ritmoo/services/playlist_download_service.dart';
+import 'package:ritmoo/services/proxy_manager.dart';
+import 'package:ritmoo/services/settings_manager.dart';
+import 'package:ritmoo/utilities/app_utils.dart';
+import 'package:ritmoo/utilities/flutter_toast.dart';
+import 'package:ritmoo/utilities/formatter.dart';
+import 'package:ritmoo/utilities/playlist_utils.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
 List<Map> playlists = [...playlistsDB, ...albumsDB];
@@ -141,23 +142,25 @@ Future<String> addUserPlaylist(String input, BuildContext context) async {
 
   if (input.startsWith('http://') || input.startsWith('https://')) {
     playlistId = extractYoutubePlaylistId(input);
-
-    if (playlistId == null) {
-      return '${context.l10n!.notYTlist}!';
-    }
   }
 
+  if (playlistId == null || playlistId.isEmpty) {
+    return '${context.l10n!.invalidYouTubePlaylist}!';
+  }
+
+  final nonNullPlaylistId = playlistId; // Promote to non-null type
+
   try {
-    if (playlistExistsAnywhere(playlistId)) {
+    if (playlistExistsAnywhere(nonNullPlaylistId)) {
       return '${context.l10n!.playlistAlreadyExists}!';
     }
 
-    final playlist = await ytClient.playlists.get(playlistId);
+    final playlist = await ytClient.playlists.get(nonNullPlaylistId);
     if (playlist.title.isEmpty) {
       return '${context.l10n!.invalidYouTubePlaylist}!';
     }
 
-    userPlaylists.value = [...userPlaylists.value, playlistId];
+    userPlaylists.value = [...userPlaylists.value, nonNullPlaylistId];
     unawaited(addOrUpdateData('user', 'playlists', userPlaylists.value));
     return '${context.l10n!.addedSuccess}!';
   } catch (e, stackTrace) {
@@ -983,10 +986,36 @@ Future<List> _loadSongsForPlaylist(Map playlist) async {
     final playlistImage = playlist['isAlbum'] == true
         ? playlist['image'] as String?
         : null;
-    final songs = await getSongsFromPlaylist(
+    var songs = await getSongsFromPlaylist(
       playlist['ytid'],
       playlistImage: playlistImage,
     );
+
+    // Fallback: If playlist ID returned 0 songs, search YouTube for the album tracks
+    if (songs.isEmpty && playlist['title'] != null) {
+      final title = playlist['title'].toString().trim();
+      if (title.isNotEmpty) {
+        logger.log(
+          'Playlist/Album "$title" returned 0 songs by ID (${playlist['ytid']}), running fallback search...',
+        );
+        songs = await searchFallbackForAlbum(
+          title,
+          playlistImage: playlistImage,
+          excludeId: playlist['ytid']?.toString(),
+        );
+        if (songs.isNotEmpty) {
+          final rawId = playlist['ytid']?.toString() ?? '';
+          final normalizedId =
+              (rawId.startsWith('OLAK5uy_') && !rawId.startsWith('VL'))
+                  ? 'VL$rawId'
+                  : rawId;
+          unawaited(
+            addOrUpdateData('cache', 'playlistSongs$normalizedId', songs),
+          );
+        }
+      }
+    }
+
     if (!playlists.contains(playlist)) {
       playlists.add(playlist);
     }
@@ -1001,36 +1030,502 @@ Future<List> _loadSongsForPlaylist(Map playlist) async {
   }
 }
 
+Future<List> searchFallbackForAlbum(
+  String title, {
+  String? playlistImage,
+  String? excludeId,
+}) async {
+  // 1. Try finding an alternative playlist on YouTube for this album
+  try {
+    final searchContent = await ytClient.search
+        .searchContent('$title album', filter: TypeFilters.playlist)
+        .timeout(const Duration(seconds: 15));
+
+    for (final item in searchContent) {
+      if (item is SearchPlaylist) {
+        final candidateId = item.id.value;
+        if (candidateId != excludeId &&
+            candidateId != 'VL$excludeId' &&
+            candidateId.isNotEmpty) {
+          final candidateSongs = await getSongsFromPlaylist(
+            candidateId,
+            playlistImage: playlistImage,
+          );
+          if (candidateSongs.isNotEmpty) {
+            logger.log(
+              'Fallback playlist $candidateId succeeded with ${candidateSongs.length} songs for "$title"',
+            );
+            return candidateSongs;
+          }
+        }
+      }
+    }
+  } catch (e) {
+    logger.log('Playlist search fallback failed for "$title": $e');
+  }
+
+  // 2. Try searching YouTube for songs directly matching the album title
+  try {
+    final searchResults = await ytClient.search
+        .search(title)
+        .timeout(const Duration(seconds: 15));
+    if (searchResults.isNotEmpty) {
+      final songs = searchResults
+          .take(30)
+          .map((video) => returnSongLayout(0, video, playlistImage: playlistImage))
+          .toList();
+      logger.log(
+        'Direct search fallback succeeded with ${songs.length} songs for "$title"',
+      );
+      return songs;
+    }
+  } catch (e) {
+    logger.log('Song direct search fallback failed for "$title": $e');
+  }
+
+  return [];
+}
+
 Future<List> getSongsFromPlaylist(
   dynamic playlistId, {
   String? playlistImage,
 }) async {
-  final songList = await getData('cache', 'playlistSongs$playlistId') ?? [];
+  final rawId = playlistId.toString();
+  final String normalizedId;
+  if (rawId.startsWith('OLAK5uy_') && !rawId.startsWith('VL')) {
+    normalizedId = 'VL$rawId';
+  } else {
+    normalizedId = rawId;
+  }
 
-  if (songList.isEmpty) {
-    await for (final song in ytClient.playlists.getVideos(playlistId)) {
+  final cacheKey = 'playlistSongs$normalizedId';
+  final cached = await getData('cache', cacheKey);
+  final cachedList = (cached is List && cached.isNotEmpty) ? cached : null;
+
+  final songList = [];
+  var networkFailed = false;
+
+  // First attempt: use the primary ytClient with normalized ID
+  try {
+    await for (final song in ytClient.playlists
+        .getVideos(normalizedId)
+        .timeout(const Duration(seconds: 30))) {
       songList.add(
         returnSongLayout(songList.length, song, playlistImage: playlistImage),
       );
     }
+  } catch (e, stackTrace) {
+    logger.log(
+      'Error getting playlist videos for $normalizedId (attempt 1): $e',
+      error: e,
+      stackTrace: stackTrace,
+    );
+    networkFailed = true;
+  }
 
-    unawaited(addOrUpdateData('cache', 'playlistSongs$playlistId', songList));
+  // Second attempt: try a fresh YoutubeExplode instance with different headers
+  if (networkFailed || songList.isEmpty) {
+    YoutubeExplode? freshYt;
+    try {
+      freshYt = YoutubeExplode();
+      await for (final song in freshYt.playlists
+          .getVideos(normalizedId)
+          .timeout(const Duration(seconds: 25))) {
+        songList.add(
+          returnSongLayout(songList.length, song, playlistImage: playlistImage),
+        );
+      }
+      if (songList.isNotEmpty) networkFailed = false;
+    } catch (e2) {
+      logger.log('getSongsFromPlaylist fallback instance failed: $e2');
+    } finally {
+      try {
+        freshYt?.close();
+      } catch (_) {}
+    }
+  }
+
+  // Fallback attempt: if normalizedId returned nothing, try rawId without VL prefix
+  if ((networkFailed || songList.isEmpty) && rawId != normalizedId) {
+    try {
+      await for (final song in ytClient.playlists
+          .getVideos(rawId)
+          .timeout(const Duration(seconds: 25))) {
+        songList.add(
+          returnSongLayout(songList.length, song, playlistImage: playlistImage),
+        );
+      }
+      if (songList.isNotEmpty) networkFailed = false;
+    } catch (eRaw) {
+      logger.log('getSongsFromPlaylist rawId ($rawId) failed: $eRaw');
+    }
+  }
+
+  // Third attempt: try proxy fallback if enabled
+  if ((networkFailed || songList.isEmpty) && useProxy.value) {
+    final proxyYt = await ProxyManager().getYoutubeExplodeClient();
+    if (proxyYt != null) {
+      try {
+        await for (final song in proxyYt.playlists
+            .getVideos(normalizedId)
+            .timeout(const Duration(seconds: 25))) {
+          songList.add(
+            returnSongLayout(
+              songList.length,
+              song,
+              playlistImage: playlistImage,
+            ),
+          );
+        }
+        if (songList.isNotEmpty) networkFailed = false;
+      } catch (e3) {
+        logger.log('Proxy getVideos failed for $normalizedId: $e3');
+      } finally {
+        try {
+          proxyYt.close();
+        } catch (_) {}
+      }
+    }
+  }
+
+  if (songList.isNotEmpty) {
+    // Fresh data from network — update cache
+    unawaited(addOrUpdateData('cache', cacheKey, songList));
+    return songList;
+  }
+
+  // All network attempts failed — fall back to cache to avoid empty screen
+  if (cachedList != null) {
+    logger.log('All network attempts failed for $playlistId, using cached song list');
+    return cachedList;
+  }
+
+  // Network returned empty (playlist truly empty) — clear stale cache
+  if (!networkFailed && cachedList != null) {
+    unawaited(deleteData('cache', cacheKey));
   }
 
   return songList;
 }
 
+
+Future<void> startArtistRadio(
+  BuildContext context,
+  String artistName, {
+  Map? seedSong,
+}) async {
+  final cleanArtist = artistName.trim();
+  if (cleanArtist.isEmpty || cleanArtist.toLowerCase() == 'unknown') {
+    showToast(context, context.l10n?.error ?? 'Error');
+    return;
+  }
+
+  showToast(
+    context,
+    context.l10n?.startingArtistRadio ?? 'Starting artist radio...',
+    duration: const Duration(seconds: 1),
+  );
+
+  try {
+    final radioList = <dynamic>[];
+    if (seedSong != null) {
+      radioList.add(seedSong);
+    }
+
+    if (!offlineMode.value) {
+      var searchResults = <Video>[];
+      try {
+        final results = await ytClient.search.search('$cleanArtist songs');
+        searchResults = results.toList();
+      } catch (e, st) {
+        logger.log(
+          'Error searching artist songs for radio',
+          error: e,
+          stackTrace: st,
+        );
+        if (useProxy.value) {
+          final proxyYt = await ProxyManager().getYoutubeExplodeClient();
+          if (proxyYt != null) {
+            try {
+              final results = await proxyYt.search.search('$cleanArtist songs');
+              searchResults = results.toList();
+            } catch (e2) {
+              logger.log('Proxy search failed for artist radio: $e2');
+            } finally {
+              try {
+                proxyYt.close();
+              } catch (_) {}
+            }
+          }
+        }
+      }
+
+      final seedYtId = seedSong?['ytid'];
+      for (final video in searchResults) {
+        if (video.id.toString() != seedYtId) {
+          radioList.add(returnSongLayout(radioList.length, video));
+        }
+      }
+    }
+
+    if (radioList.isEmpty) {
+      final userBox = Hive.box('user');
+      final liked = List<Map>.from(userBox.get('likedSongs', defaultValue: []));
+      // Key must match what common_services.dart stores: 'recentlyPlayedSongs'
+      final recent = List<Map>.from(
+        userBox.get('recentlyPlayedSongs', defaultValue: []),
+      );
+      final localMatches = [
+        ...liked,
+        ...recent,
+      ].where((s) {
+        final songArtist = s['artist']?.toString().toLowerCase() ?? '';
+        return songArtist.contains(cleanArtist.toLowerCase());
+      }).toList();
+      radioList.addAll(localMatches);
+    }
+
+    if (radioList.isNotEmpty) {
+      final radioTitle = context.mounted
+          ? '${context.l10n?.artistRadio ?? "Artist Radio"} • $cleanArtist'
+          : 'Radio • $cleanArtist';
+      await audioHandler.playPlaylistSong(
+        playlist: {'title': radioTitle, 'list': radioList},
+        songIndex: 0,
+      );
+    } else {
+      if (context.mounted) {
+        showToast(context, context.l10n?.error ?? 'No songs found');
+      }
+    }
+  } catch (e, st) {
+    logger.log('Error starting artist radio', error: e, stackTrace: st);
+    if (context.mounted) {
+      showToast(context, context.l10n?.error ?? 'Error');
+    }
+  }
+}
+
+/// Extracts artist names from the created albums database.
+List<String> getAlbumArtists() {
+  final artists = <String>{};
+  for (final album in albumsDB) {
+    if (album is Map) {
+      final title = album['title']?.toString() ?? '';
+      if (title.contains(' - ')) {
+        final parts = title.split(' - ');
+        if (parts.length >= 2) {
+          artists
+            ..add(parts[0].trim())
+            ..add(parts[1].trim());
+        }
+      }
+    }
+  }
+  return artists.where((a) => a.isNotEmpty && a.length > 2).toList();
+}
+
+/// Dynamically generates an indefinite list of related songs using the created albums database (albumsDB),
+/// YouTube search, sample songs, and user preferences.
+Future<List<Map>> getInfiniteRelatedSongsFromAlbums({
+  Map? seedSong,
+  Map? seedPlaylist,
+  String? seedArtist,
+  int limit = 10,
+  Set<String>? excludedYtIds,
+}) async {
+  final resultSongs = <Map>[];
+  final seenYtIds = <String>{...?excludedYtIds};
+  if (seedSong?['ytid'] != null) seenYtIds.add(seedSong!['ytid'].toString());
+
+  // 1. Identify seed artist / keywords
+  var targetArtist = seedArtist?.trim() ?? '';
+  if (targetArtist.isEmpty && seedSong != null) {
+    targetArtist = seedSong['artist']?.toString().trim() ?? '';
+  }
+  if (targetArtist.isEmpty && seedPlaylist != null) {
+    final playlistSongs = seedPlaylist['list'] as List? ?? [];
+    if (playlistSongs.isNotEmpty && playlistSongs[0] is Map) {
+      targetArtist = playlistSongs[0]['artist']?.toString().trim() ?? '';
+    }
+    if (targetArtist.isEmpty) {
+      final title = seedPlaylist['title']?.toString() ?? '';
+      if (title.contains(' - ')) {
+        targetArtist = title.split(' - ').last.trim();
+      }
+    }
+  }
+
+  // 2. Search related artists from albumsDB
+  final allAlbumArtists = getAlbumArtists();
+  final relatedArtists = <String>[];
+  if (targetArtist.isNotEmpty && targetArtist.toLowerCase() != 'unknown') {
+    relatedArtists.add(targetArtist);
+    for (final a in allAlbumArtists) {
+      if (a.toLowerCase() != targetArtist.toLowerCase()) {
+        relatedArtists.add(a);
+      }
+    }
+  } else {
+    relatedArtists.addAll(List<String>.from(allAlbumArtists)..shuffle());
+  }
+
+  // 3. Online fetch: query top songs from related album artists
+  if (!offlineMode.value && relatedArtists.isNotEmpty) {
+    final artistsToQuery = (List<String>.from(relatedArtists)..shuffle()).take(3);
+    for (final artist in artistsToQuery) {
+      if (resultSongs.length >= limit) break;
+      try {
+        final searchResults = await ytClient.search.search('$artist songs');
+        for (final video in searchResults) {
+          final ytid = video.id.toString();
+          if (seenYtIds.add(ytid)) {
+            resultSongs.add(returnSongLayout(resultSongs.length, video));
+            if (resultSongs.length >= limit) break;
+          }
+        }
+      } catch (e) {
+        logger.log('Error fetching infinite album-related songs for $artist: $e');
+      }
+    }
+  }
+
+  // 4. Fallback / local pool from playlistsDB, sampleSongsDB, userLikedSongs
+  if (resultSongs.length < limit) {
+    final pool = <Map>[];
+    for (final p in playlistsDB) {
+      final pList = p['list'] as List? ?? [];
+      for (final s in pList) {
+        // Only include songs with a valid non-empty ytid
+        if (s is Map && s['ytid'] != null && s['ytid'].toString().isNotEmpty) {
+          pool.add(s);
+        }
+      }
+    }
+    // Filter sampleSongsDB for valid ytids as well
+    pool.addAll(
+      sampleSongsDB.where(
+        (s) => s['ytid'] != null && s['ytid'].toString().isNotEmpty,
+      ),
+    );
+    final userBox = Hive.box('user');
+    final liked = List<Map>.from(userBox.get('likedSongs', defaultValue: []));
+    pool
+      ..addAll(liked.where(
+        (s) => s['ytid'] != null && s['ytid'].toString().isNotEmpty,
+      ))
+      ..shuffle();
+
+    for (final song in pool) {
+      final ytid = song['ytid']?.toString();
+      if (ytid != null && ytid.isNotEmpty && seenYtIds.add(ytid)) {
+        resultSongs.add(Map<String, dynamic>.from(song));
+        if (resultSongs.length >= limit) break;
+      }
+    }
+  }
+
+  return resultSongs;
+}
+
+/// Starts an endless Mix Radio based on a seed playlist, song, or artist.
+Future<void> startMixRadio(
+  BuildContext context, {
+  Map? seedPlaylist,
+  Map? seedSong,
+  String? seedArtist,
+  String? seedTitle,
+}) async {
+  showToast(
+    context,
+    context.l10n?.startingMixRadio ?? 'Starting Mix Radio...',
+    duration: const Duration(seconds: 1),
+  );
+
+  try {
+    final initialList = <dynamic>[];
+    var displayTitle = seedTitle ?? '';
+
+    if (seedSong != null) {
+      initialList.add(seedSong);
+      displayTitle = seedSong['title']?.toString() ?? displayTitle;
+      seedArtist ??= seedSong['artist']?.toString();
+    } else if (seedPlaylist != null) {
+      displayTitle = seedPlaylist['title']?.toString() ?? displayTitle;
+      final pList = seedPlaylist['list'] as List? ?? [];
+      for (final s in pList.take(5)) {
+        if (s is Map) initialList.add(s);
+      }
+    }
+
+    if (displayTitle.isEmpty) {
+      displayTitle = seedArtist ?? 'Mix';
+    }
+
+    // Generate indefinite related songs based on the created albums
+    // Build excludedYtIds safely - filter out any null ytids to avoid
+    // adding the literal string "null" to the exclusion set.
+    final excludedIds = initialList
+        .where((s) => s['ytid'] != null && s['ytid'].toString().isNotEmpty)
+        .map((s) => s['ytid'].toString())
+        .toSet();
+    final moreSongs = await getInfiniteRelatedSongsFromAlbums(
+      seedSong: seedSong,
+      seedPlaylist: seedPlaylist,
+      seedArtist: seedArtist,
+      limit: 12,
+      excludedYtIds: excludedIds,
+    );
+    initialList.addAll(moreSongs);
+
+    if (initialList.isEmpty) {
+      initialList.addAll(sampleSongsDB.take(6));
+    }
+
+    final radioTitle = context.mounted
+        ? '${context.l10n?.mixRadio ?? "Mix Radio"} • $displayTitle'
+        : 'Mix Radio • $displayTitle';
+
+    await audioHandler.playPlaylistSong(
+      playlist: {
+        'title': radioTitle,
+        'list': initialList,
+        'isRadio': true,
+      },
+      songIndex: 0,
+    );
+  } catch (e, st) {
+    logger.log('Error starting mix radio', error: e, stackTrace: st);
+    if (context.mounted) {
+      showToast(context, context.l10n?.error ?? 'Error');
+    }
+  }
+}
+
 Future updatePlaylistList(BuildContext context, String playlistId) async {
   final index = findPlaylistIndexByYtId(playlistId);
   if (index != -1) {
-    final songList = [];
-    await for (final song in ytClient.playlists.getVideos(playlistId)) {
-      songList.add(returnSongLayout(songList.length, song));
-    }
+    final target = playlists[index];
+    final rawId = playlistId;
+    final normalizedId =
+        (rawId.startsWith('OLAK5uy_') && !rawId.startsWith('VL'))
+            ? 'VL$rawId'
+            : rawId;
 
-    playlists[index]['list'] = songList;
-    unawaited(addOrUpdateData('cache', 'playlistSongs$playlistId', songList));
-    showToast(context, context.l10n!.playlistUpdated);
+    // Invalidate any stale cache for this playlist
+    unawaited(deleteData('cache', 'playlistSongs$normalizedId'));
+    unawaited(deleteData('cache', 'playlistSongs$rawId'));
+
+    final songList = await _loadSongsForPlaylist(target);
+    if (songList.isNotEmpty) {
+      playlists[index]['list'] = songList;
+      unawaited(
+        addOrUpdateData('cache', 'playlistSongs$normalizedId', songList),
+      );
+    }
+    if (context.mounted) {
+      showToast(context, context.l10n!.playlistUpdated);
+    }
     return playlists[index];
   }
   logger.log('Playlist with id $playlistId not found for update');

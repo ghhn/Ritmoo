@@ -1,12 +1,12 @@
 /*
  *     Copyright (C) 2026 Valeri Gokadze
  *
- *     Musify is free software: you can redistribute it and/or modify
+ *     Ritmoo is free software: you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
  *     the Free Software Foundation, either version 3 of the License, or
  *     (at your option) any later version.
  *
- *     Musify is distributed in the hope that it will be useful,
+ *     Ritmoo is distributed in the hope that it will be useful,
  *     but WITHOUT ANY WARRANTY; without even the implied warranty of
  *     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *     GNU General Public License for more details.
@@ -15,25 +15,25 @@
  *     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  *
- *     For more information about Musify, including how to contribute,
- *     please visit: https://github.com/gokadzev/Musify
+ *     For more information about Ritmoo, including how to contribute,
+ *     please visit: https://github.com/gokadzev/Ritmoo
  */
 
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:musify/constants/app_constants.dart';
-import 'package:musify/extensions/l10n.dart';
-import 'package:musify/main.dart';
-import 'package:musify/services/common_services.dart';
-import 'package:musify/services/playlists_manager.dart';
-import 'package:musify/services/settings_manager.dart';
-import 'package:musify/utilities/app_utils.dart';
-import 'package:musify/utilities/async_loader.dart';
-import 'package:musify/widgets/announcement_box.dart';
-import 'package:musify/widgets/playlist_cube.dart';
-import 'package:musify/widgets/section_header.dart';
-import 'package:musify/widgets/song_bar.dart';
+import 'package:ritmoo/constants/app_constants.dart';
+import 'package:ritmoo/extensions/l10n.dart';
+import 'package:ritmoo/main.dart';
+import 'package:ritmoo/services/common_services.dart';
+import 'package:ritmoo/services/playlists_manager.dart';
+import 'package:ritmoo/services/settings_manager.dart';
+import 'package:ritmoo/utilities/app_utils.dart';
+import 'package:ritmoo/utilities/async_loader.dart';
+import 'package:ritmoo/widgets/announcement_box.dart';
+import 'package:ritmoo/widgets/playlist_cube.dart';
+import 'package:ritmoo/widgets/section_header.dart';
+import 'package:ritmoo/widgets/song_bar.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -47,7 +47,13 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     final playlistHeight = MediaQuery.sizeOf(context).height * 0.25 / 1.1;
     return Scaffold(
-      appBar: AppBar(title: const Text('Musify.')),
+      appBar: AppBar(
+        title: Image.asset(
+          'assets/images/logo_r.png',
+          height: 38,
+          fit: BoxFit.contain,
+        ),
+      ),
       body: SingleChildScrollView(
         padding: commonSingleChildScrollViewPadding,
         child: Column(
@@ -78,6 +84,7 @@ class _HomePageState extends State<HomePage> {
             ),
             _buildSuggestedPlaylists(playlistHeight),
             _buildSuggestedPlaylists(playlistHeight, showOnlyLiked: true),
+            _buildSampleSongsSection(),
             _buildMostPlayedSection(),
             _buildRecommendedSongsSection(),
           ],
@@ -100,6 +107,9 @@ class _HomePageState extends State<HomePage> {
       ),
 
       builder: (context, playlists) {
+        if (playlists.isEmpty) {
+          return const SizedBox.shrink();
+        }
         final itemsNumber = playlists.length.clamp(0, recommendedCubesNumber);
         final isLargeScreen = MediaQuery.of(context).size.width > 480;
 
@@ -120,6 +130,80 @@ class _HomePageState extends State<HomePage> {
           ],
         );
       },
+    );
+  }
+
+  Widget _buildSampleSongsSection() {
+    final sampleSongs = getSampleSongs(limit: 6);
+    if (sampleSongs.isEmpty) return const SizedBox.shrink();
+
+    final sectionTitle = context.l10n!.sampleSongs;
+    final samplePlaylist = {'title': sectionTitle, 'list': sampleSongs};
+
+    return Column(
+      children: [
+        SectionHeader(
+          title: sectionTitle,
+          icon: FluentIcons.music_note_2_24_filled,
+          actionButton: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                tooltip: context.l10n?.startMixRadio ?? 'Start Mix Radio',
+                onPressed: () => startMixRadio(
+                  context,
+                  seedPlaylist: samplePlaylist,
+                ),
+                icon: Icon(
+                  FluentIcons.radio_button_24_filled,
+                  color: Theme.of(context).colorScheme.primary,
+                  size: 26,
+                ),
+              ),
+              IconButton(
+                onPressed: () async {
+                  await audioHandler.playPlaylistSong(
+                    playlist: samplePlaylist,
+                    songIndex: 0,
+                  );
+                },
+                icon: Icon(
+                  FluentIcons.play_circle_24_filled,
+                  color: Theme.of(context).colorScheme.primary,
+                  size: 30,
+                ),
+              ),
+            ],
+          ),
+        ),
+        ListView.builder(
+          shrinkWrap: true,
+          physics: const BouncingScrollPhysics(),
+          itemCount: sampleSongs.length,
+          padding: commonListViewBottomPadding,
+          itemBuilder: (context, index) {
+            final borderRadius = getItemBorderRadius(
+              index,
+              sampleSongs.length,
+            );
+            return RepaintBoundary(
+              key: listItemKey('home_sample', index, sampleSongs[index]),
+              child: SongBar(
+                sampleSongs[index],
+                true,
+                borderRadius: borderRadius,
+                showMusicDuration: true,
+                onPlay: () async {
+                  await audioHandler.playPlaylistSong(
+                    playlist: samplePlaylist,
+                    songIndex: index,
+                  );
+                },
+              ),
+            );
+          },
+        ),
+      ],
     );
   }
 

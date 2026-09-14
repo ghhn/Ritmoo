@@ -24,7 +24,7 @@ if (keystorePropertiesFile.exists()) {
 }
 
 android {
-    namespace = "com.gokadzev.musify"
+    namespace = "com.gokadzev.ritmoo"
     compileSdk = 36
     ndkVersion = "28.2.13676358"
 
@@ -47,7 +47,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.gokadzev.musify"
+        applicationId = "com.gokadzev.ritmoo"
         minSdk = 24
         targetSdk = 36
         versionCode = flutter.versionCode
@@ -69,13 +69,19 @@ android {
 
     signingConfigs {
         create("release") {
-            // From decoded key
-            storeFile = file("key.jks")
-
-            // From key.properties
-            keyAlias = keystoreProperties["keyAlias"] as String?
-            keyPassword = keystoreProperties["keyPassword"] as String?
-            storePassword = keystoreProperties["storePassword"] as String?
+            val keyFile = file("key.jks")
+            if (keyFile.exists() && keystorePropertiesFile.exists()) {
+                storeFile = keyFile
+                keyAlias = keystoreProperties["keyAlias"] as String?
+                keyPassword = keystoreProperties["keyPassword"] as String?
+                storePassword = keystoreProperties["storePassword"] as String?
+            } else {
+                val debugConfig = signingConfigs.getByName("debug")
+                storeFile = debugConfig.storeFile
+                keyAlias = debugConfig.keyAlias
+                keyPassword = debugConfig.keyPassword
+                storePassword = debugConfig.storePassword
+            }
         }
     }
 

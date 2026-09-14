@@ -1,12 +1,12 @@
 /*
  *     Copyright (C) 2026 Valeri Gokadze
  *
- *     Musify is free software: you can redistribute it and/or modify
+ *     Ritmoo is free software: you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
  *     the Free Software Foundation, either version 3 of the License, or
  *     (at your option) any later version.
  *
- *     Musify is distributed in the hope that it will be useful,
+ *     Ritmoo is distributed in the hope that it will be useful,
  *     but WITHOUT ANY WARRANTY; without even the implied warranty of
  *     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *     GNU General Public License for more details.
@@ -15,15 +15,50 @@
  *     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  *
- *     For more information about Musify, including how to contribute,
- *     please visit: https://github.com/gokadzev/Musify
+ *     For more information about Ritmoo, including how to contribute,
+ *     please visit: https://github.com/gokadzev/Ritmoo
  */
 
 List albumsDB = [
   {
-    'ytid': 'PLS5_MK8e_MzSNmCQ3_AqbQL1JOM4Yy-_v',
-    'title': 'Starboy - The Weeknd',
-    'image': 'https://i.scdn.co/image/ab67616d0000b2734718e2b124f79258be7bc452',
+    'ytid': 'OLAK5uy_mr6DjxLeVO2rPk8zAZx0F2_k5BaGuXlyQ',
+    'title': "Short N' Sweet - Sabrina Carpenter",
+    'image': 'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/f6/15/d0/f615d0ab-e0c4-575d-907e-1cc084642357/24UMGIM61704.rgb.jpg/250x250bb.jpg',
+    'isAlbum': true,
+    'list': [],
+  },
+  {
+    'ytid': 'OLAK5uy_n6zWDEznvX5Lz6Q8SMCeiEcJk87sKh0XI',
+    'title': 'Ferxxocalipsis - Feid',
+    'image': 'https://i.scdn.co/image/ab67616d0000b273f1aad814a40ec7419c234242',
+    'isAlbum': true,
+    'list': [],
+  },
+  {
+    'ytid': 'OLAK5uy_m1WZWUtrntyrrtCUSATYfs84K3ZnZl9P0',
+    'title': 'Hit Me Hard And Soft - Billie Eilish',
+    'image': 'https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/92/9f/69/929f69f1-9977-3a44-d674-11f70c852d1b/24UMGIM36186.rgb.jpg/250x250bb.jpg',
+    'isAlbum': true,
+    'list': [],
+  },
+  {
+    'ytid': 'OLAK5uy_lFbfW_UOra8dYRTa69lxR3fxYjogNtiQw',
+    'title': 'THE TORTURED POETS DEPARTMENT - Taylor Swift',
+    'image': 'https://i.scdn.co/image/ab67616d0000b2735076e4160d018e378f488c33',
+    'isAlbum': true,
+    'list': [],
+  },
+  {
+    'ytid': 'OLAK5uy_nUljIDktkB7qCIEoc-vn1J26T-nHtC1cM',
+    'title': 'GÉNESIS - Peso Pluma',
+    'image': 'https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/a7/72/77/a77277f4-9b2e-0890-4707-31c1ac394c66/197189111396.jpg/250x250bb.jpg',
+    'isAlbum': true,
+    'list': [],
+  },
+  {
+    'ytid': 'OLAK5uy_lTUCPSiT_kZOCY1BlJ1t5T5nsxeG6v20s',
+    'title': 'DRIVE - Tiësto (Europa)',
+    'image': 'https://i.scdn.co/image/ab67616d0000b27375544696cbe0e019eaf0fcbb',
     'isAlbum': true,
     'list': [],
   },

@@ -1,12 +1,12 @@
 /*
  *     Copyright (C) 2026 Valeri Gokadze
  *
- *     Musify is free software: you can redistribute it and/or modify
+ *     Ritmoo is free software: you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
  *     the Free Software Foundation, either version 3 of the License, or
  *     (at your option) any later version.
  *
- *     Musify is distributed in the hope that it will be useful,
+ *     Ritmoo is distributed in the hope that it will be useful,
  *     but WITHOUT ANY WARRANTY; without even the implied warranty of
  *     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *     GNU General Public License for more details.
@@ -15,8 +15,8 @@
  *     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  *
- *     For more information about Musify, including how to contribute,
- *     please visit: https://github.com/gokadzev/Musify
+ *     For more information about Ritmoo, including how to contribute,
+ *     please visit: https://github.com/gokadzev/Ritmoo
  */
 
 import 'dart:async';
@@ -26,18 +26,18 @@ import 'package:audio_service/audio_service.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:hive/hive.dart';
 import 'package:just_audio/just_audio.dart';
-import 'package:musify/main.dart';
-import 'package:musify/models/position_data.dart';
-import 'package:musify/services/common_services.dart';
-import 'package:musify/services/data_manager.dart';
-import 'package:musify/services/settings_manager.dart';
-import 'package:musify/utilities/map_utils.dart';
-import 'package:musify/utilities/mediaitem.dart';
-import 'package:musify/utilities/queue_entry_utils.dart';
+import 'package:ritmoo/main.dart';
+import 'package:ritmoo/models/position_data.dart';
+import 'package:ritmoo/services/common_services.dart';
+import 'package:ritmoo/services/data_manager.dart';
+import 'package:ritmoo/services/settings_manager.dart';
+import 'package:ritmoo/utilities/map_utils.dart';
+import 'package:ritmoo/utilities/mediaitem.dart';
+import 'package:ritmoo/utilities/queue_entry_utils.dart';
 import 'package:rxdart/rxdart.dart';
 
-class MusifyAudioHandler extends BaseAudioHandler {
-  MusifyAudioHandler() {
+class RitmooAudioHandler extends BaseAudioHandler {
+  RitmooAudioHandler() {
     _androidEqualizer = AndroidEqualizer();
     audioPlayer = AudioPlayer(
       audioPipeline: AudioPipeline(androidAudioEffects: [_androidEqualizer]),
@@ -782,9 +782,15 @@ class MusifyAudioHandler extends BaseAudioHandler {
         _currentLoadingIndex = -1;
         _currentLoadingTransitionId = -1;
         _resetPreloadingState();
-        shuffleNotifier.value = false;
-        unawaited(Hive.box('settings').put('shuffleEnabled', false));
-        await audioPlayer.setShuffleModeEnabled(false);
+        // Reset shuffle mode when replacing the queue.
+        // Notify listeners so the UI shuffle button updates immediately.
+        if (shuffleNotifier.value) {
+          shuffleNotifier.value = false;
+          unawaited(Hive.box('settings').put('shuffleEnabled', false));
+          await audioPlayer.setShuffleModeEnabled(false);
+          // Emit a playback state update so the UI reflects the new shuffle state.
+          _updatePlaybackState();
+        }
       }
 
       int? targetQueueIndex;

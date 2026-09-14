@@ -44,6 +44,11 @@ app.*.map.json
 
 # Android related
 android/app/.cxx/
+android/build/
+android/build_err.txt
+
+# Java heap dumps
+*.hprof
 
 # Generated localization dart files
 lib/localization/app_*.dart

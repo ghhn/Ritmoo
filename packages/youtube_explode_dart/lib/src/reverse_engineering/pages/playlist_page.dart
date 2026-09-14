@@ -53,15 +53,27 @@ class PlaylistPage extends YoutubePage<_InitialData> {
       // Fallback: fetch via the browse API. Needed for Mixes and YT Music playlists
       // whose initial HTML page doesn't embed the video list.
       try {
-        final data = await httpClient.sendPost('browse', {
-          'browseId': page.initialData.browseId ?? id,
-        }, headers: {
-          'x-youtube-client-name': '1',
-          'x-goog-visitor-id': page.initialData.visitorData ?? '',
-        });
-        final browsePage = PlaylistPage.id(
-            id, _InitialData(data), page.initialData.visitorData);
-        if (browsePage.videos.isNotEmpty) return browsePage;
+        final rawBrowseId = page.initialData.browseId ?? id;
+        final candidates = <String>{
+          rawBrowseId,
+          if (rawBrowseId.startsWith('VL')) rawBrowseId.substring(2),
+          if (!rawBrowseId.startsWith('VL')) 'VL$rawBrowseId',
+        };
+        for (final bId in candidates) {
+          try {
+            final data = await httpClient.sendPost('browse', {
+              'browseId': bId,
+            }, headers: {
+              'x-youtube-client-name': '1',
+              'x-goog-visitor-id': page.initialData.visitorData ?? '',
+            });
+            final browsePage = PlaylistPage.id(
+                id, _InitialData(data), page.initialData.visitorData);
+            if (browsePage.videos.isNotEmpty) return browsePage;
+          } catch (_) {
+            // Browse candidate failed — try next.
+          }
+        }
       } catch (_) {
         // Browse failed — fall through and return what we have.
       }
@@ -83,18 +95,21 @@ class _InitialData extends InitialData {
         ?.firstWhereOrNull((e) => e['service'] == 'GFEEDBACK') as JsonMap?;
     final paramList = gfeedback?.getJson<List<dynamic>>('params');
     return (paramList?.firstWhereOrNull((e) => e['key'] == 'browse_id')
-            as JsonMap?)
-        ?.getT<String>('value');
+        as JsonMap?)?['value'] as String?;
   }
 
   bool get exists =>
       root.getJson<String>('alerts/0/alertRenderer/type') != 'ERROR';
 
   late final String? title =
-      root.getJson<String>('metadata/playlistMetadataRenderer/title');
+      root.getJson<String>('metadata/playlistMetadataRenderer/title') ??
+      root.getJson<String>(
+          'header/musicDetailHeaderRenderer/title/runs/0/text');
 
   late final String? description =
-      root.getJson<String>('metadata/playlistMetadataRenderer/description');
+      root.getJson<String>('metadata/playlistMetadataRenderer/description') ??
+      root.getJson<String>(
+          'header/musicDetailHeaderRenderer/description/runs/0/text');
 
   late final String? author = (root
           .getJson<List<dynamic>>('sidebar/playlistSidebarRenderer/items')
@@ -103,7 +118,9 @@ class _InitialData extends InitialData {
         'playlistSidebarSecondaryInfoRenderer/videoOwner/videoOwnerRenderer/title/runs',
       )
       ?.cast<Map<dynamic, dynamic>>()
-      .parseRuns();
+      .parseRuns() ??
+      root.getJson<String>(
+          'header/musicDetailHeaderRenderer/subtitle/runs/0/text');
 
   late final int? viewCount = ((root
               .getJson<List<dynamic>>('sidebar/playlistSidebarRenderer/items')
@@ -159,7 +176,7 @@ class _InitialData extends InitialData {
   }
 
   /// The flat list of items (videos + continuation marker) for the current page.
-  /// Handles both continuation responses and initial page loads.
+  /// Handles continuation responses, two-column, single-column, and YT Music album structures.
   List<JsonMap>? get _videoItems {
     // Continuation responses arrive under onResponseReceivedActions/Commands.
     final actions = root.getJson<List<dynamic>>('onResponseReceivedActions') ??
@@ -174,28 +191,96 @@ class _InitialData extends InitialData {
       }
     }
 
-    // Initial page: tabs → sectionList → itemSection → playlistVideoListRenderer.
-    final tabs = root
-        .getJson<List<dynamic>>('contents/twoColumnBrowseResultsRenderer/tabs');
-    if (tabs == null) return null;
+    // Direct musicPlaylistShelfRenderer or musicShelfRenderer under contents
+    final directPlaylistShelf = root.getJson<List<dynamic>>('contents/musicPlaylistShelfRenderer/contents') ??
+        root.getJson<List<dynamic>>('contents/musicShelfRenderer/contents') ??
+        root.getJson<List<dynamic>>('contents/playlistVideoListRenderer/contents');
+    if (directPlaylistShelf != null) return directPlaylistShelf.cast<JsonMap>();
 
-    for (final tab in tabs.cast<JsonMap>()) {
-      final sections = tab.getJson<List<dynamic>>(
-          'tabRenderer/content/sectionListRenderer/contents');
-      if (sections == null) continue;
+    // secondaryContents (commonly used in two-column YouTube Music album layout)
+    final secondarySections = root.getJson<List<dynamic>>(
+        'contents/twoColumnBrowseResultsRenderer/secondaryContents/sectionListRenderer/contents');
+    if (secondarySections != null) {
+      for (final section in secondarySections.cast<JsonMap>()) {
+        final contents = section.getJson<List<dynamic>>('musicPlaylistShelfRenderer/contents') ??
+            section.getJson<List<dynamic>>('musicShelfRenderer/contents') ??
+            section.getJson<List<dynamic>>('playlistVideoListRenderer/contents');
+        if (contents != null) return contents.cast<JsonMap>();
 
-      for (final section in sections.cast<JsonMap>()) {
-        final itemContents =
-            section.getJson<List<dynamic>>('itemSectionRenderer/contents');
-        if (itemContents == null) continue;
-
-        for (final item in itemContents.cast<JsonMap>()) {
-          final contents =
-              item.getJson<List<dynamic>>('playlistVideoListRenderer/contents');
-          if (contents != null) return contents.cast<JsonMap>();
+        final itemContents = section.getJson<List<dynamic>>('itemSectionRenderer/contents');
+        if (itemContents != null) {
+          for (final item in itemContents.cast<JsonMap>()) {
+            final subContents = item.getJson<List<dynamic>>('musicPlaylistShelfRenderer/contents') ??
+                item.getJson<List<dynamic>>('musicShelfRenderer/contents') ??
+                item.getJson<List<dynamic>>('playlistVideoListRenderer/contents');
+            if (subContents != null) return subContents.cast<JsonMap>();
+          }
         }
       }
     }
+
+    // Initial page: tabs → sectionList → itemSection → playlistVideoListRenderer/musicPlaylistShelfRenderer.
+    final tabs = root.getJson<List<dynamic>>('contents/twoColumnBrowseResultsRenderer/tabs') ??
+        root.getJson<List<dynamic>>('contents/singleColumnBrowseResultsRenderer/tabs');
+    if (tabs != null) {
+      for (final tab in tabs.cast<JsonMap>()) {
+        // Direct shelf under tabRenderer
+        final directTabShelf = tab.getJson<List<dynamic>>(
+                'tabRenderer/content/musicPlaylistShelfRenderer/contents') ??
+            tab.getJson<List<dynamic>>(
+                'tabRenderer/content/musicShelfRenderer/contents') ??
+            tab.getJson<List<dynamic>>(
+                'tabRenderer/content/playlistVideoListRenderer/contents');
+        if (directTabShelf != null) return directTabShelf.cast<JsonMap>();
+
+        final sections = tab.getJson<List<dynamic>>(
+            'tabRenderer/content/sectionListRenderer/contents');
+        if (sections == null) continue;
+
+        for (final section in sections.cast<JsonMap>()) {
+          final directContents =
+              section.getJson<List<dynamic>>('musicPlaylistShelfRenderer/contents') ??
+              section.getJson<List<dynamic>>('playlistVideoListRenderer/contents') ??
+              section.getJson<List<dynamic>>('musicShelfRenderer/contents');
+          if (directContents != null) return directContents.cast<JsonMap>();
+
+          final itemContents =
+              section.getJson<List<dynamic>>('itemSectionRenderer/contents');
+          if (itemContents == null) continue;
+
+          for (final item in itemContents.cast<JsonMap>()) {
+            final contents =
+                item.getJson<List<dynamic>>('musicPlaylistShelfRenderer/contents') ??
+                item.getJson<List<dynamic>>('playlistVideoListRenderer/contents') ??
+                item.getJson<List<dynamic>>('musicShelfRenderer/contents');
+            if (contents != null) return contents.cast<JsonMap>();
+          }
+        }
+      }
+    }
+
+    // Direct sectionListRenderer (fallback for browse API responses)
+    final directSections = root.getJson<List<dynamic>>('contents/sectionListRenderer/contents');
+    if (directSections != null) {
+      for (final section in directSections.cast<JsonMap>()) {
+        final directContents = section.getJson<List<dynamic>>('musicPlaylistShelfRenderer/contents') ??
+            section.getJson<List<dynamic>>('playlistVideoListRenderer/contents') ??
+            section.getJson<List<dynamic>>('musicShelfRenderer/contents');
+        if (directContents != null) return directContents.cast<JsonMap>();
+
+        final itemContents = section.getJson<List<dynamic>>('itemSectionRenderer/contents');
+        if (itemContents != null) {
+          for (final item in itemContents.cast<JsonMap>()) {
+            final contents =
+                item.getJson<List<dynamic>>('musicPlaylistShelfRenderer/contents') ??
+                item.getJson<List<dynamic>>('playlistVideoListRenderer/contents') ??
+                item.getJson<List<dynamic>>('musicShelfRenderer/contents');
+            if (contents != null) return contents.cast<JsonMap>();
+          }
+        }
+      }
+    }
+
     return null;
   }
 
@@ -207,9 +292,12 @@ class _InitialData extends InitialData {
         .map((item) =>
             item['playlistVideoRenderer'] as JsonMap? ??
             item['richItemRenderer']?['content']?['playlistVideoRenderer']
-                as JsonMap?)
+                as JsonMap? ??
+            item['musicResponsiveListItemRenderer'] as JsonMap? ??
+            item)
         .nonNulls
         .map(_Video.new)
+        .where((v) => v.id.isNotEmpty)
         .toList();
   }
 }
@@ -218,34 +306,140 @@ class _Video {
   final JsonMap root;
   _Video(this.root);
 
-  String get id => root.getT<String>('videoId')!;
+  String get id {
+    final direct = root.getJson<String>('videoId') ??
+        root.getJson<String>('playlistItemData/videoId') ??
+        root.getJson<String>('navigationEndpoint/watchEndpoint/videoId') ??
+        root.getJson<String>('onTap/watchEndpoint/videoId') ??
+        root.getJson<String>('doubleTapCommand/watchEndpoint/videoId') ??
+        root.getJson<String>(
+            'overlay/musicItemThumbnailOverlayRenderer/content/musicPlayButtonRenderer/playNavigationEndpoint/watchEndpoint/videoId') ??
+        root.getJson<String>(
+            'thumbnailOverlay/musicItemThumbnailOverlayRenderer/content/musicPlayButtonRenderer/playNavigationEndpoint/watchEndpoint/videoId');
+    if (direct != null && direct.isNotEmpty) return direct;
 
-  String get author =>
-      root
-          .getJson<List<dynamic>>('ownerText/runs')
-          ?.cast<Map<dynamic, dynamic>>()
-          .parseRuns() ??
-      root
-          .getJson<List<dynamic>>('shortBylineText/runs')
-          ?.cast<Map<dynamic, dynamic>>()
-          .parseRuns() ??
-      '';
+    // Try flex columns (musicResponsiveListItemRenderer)
+    final flexCols = root.getJson<List<dynamic>>('flexColumns');
+    if (flexCols != null) {
+      for (final col in flexCols) {
+        if (col is Map) {
+          final runs = (col as JsonMap).getJson<List<dynamic>>(
+              'musicResponsiveListItemFlexColumnRenderer/text/runs');
+          if (runs != null) {
+            for (final run in runs) {
+              if (run is Map) {
+                final vid = (run as JsonMap).getJson<String>(
+                    'navigationEndpoint/watchEndpoint/videoId');
+                if (vid != null && vid.isNotEmpty) return vid;
+              }
+            }
+          }
+        }
+      }
+    }
 
-  String get channelId =>
-      root.getJson<String>(
-          'ownerText/runs/0/navigationEndpoint/browseEndpoint/browseId') ??
-      root.getJson<String>(
-          'shortBylineText/runs/0/navigationEndpoint/browseEndpoint/browseId') ??
-      root.getJson<String>(
-          'shortBylineText/runs/0/navigationEndpoint/showDialogCommand/panelLoadingStrategy/inlineContent/dialogViewModel/customContent/listViewModel/listItems/0/listItemViewModel/rendererContext/commandContext/onTap/innertubeCommand/browseEndpoint/browseId') ??
-      '';
+    // Try menu items
+    final menuItems = root.getJson<List<dynamic>>('menu/menuRenderer/items');
+    if (menuItems != null) {
+      for (final item in menuItems) {
+        if (item is Map) {
+          final vid = (item as JsonMap).getJson<String>(
+              'menuNavigationItemRenderer/navigationEndpoint/watchEndpoint/videoId');
+          if (vid != null && vid.isNotEmpty) return vid;
+        }
+      }
+    }
 
-  String get title =>
-      root
-          .getJson<List<dynamic>>('title/runs')
-          ?.cast<Map<dynamic, dynamic>>()
-          .parseRuns() ??
-      '';
+    return '';
+  }
+
+  String get author {
+    final standardAuthor = root
+            .getJson<List<dynamic>>('ownerText/runs')
+            ?.cast<Map<dynamic, dynamic>>()
+            .parseRuns() ??
+        root
+            .getJson<List<dynamic>>('shortBylineText/runs')
+            ?.cast<Map<dynamic, dynamic>>()
+            .parseRuns() ??
+        root
+            .getJson<List<dynamic>>('longBylineText/runs')
+            ?.cast<Map<dynamic, dynamic>>()
+            .parseRuns() ??
+        root
+            .getJson<List<dynamic>>('bylineText/runs')
+            ?.cast<Map<dynamic, dynamic>>()
+            .parseRuns();
+    if (standardAuthor != null && standardAuthor.isNotEmpty) {
+      return standardAuthor;
+    }
+
+    // Fallback: musicResponsiveListItemRenderer flexColumns[1]
+    final flexCols = root.getJson<List<dynamic>>('flexColumns');
+    if (flexCols != null && flexCols.length > 1) {
+      final secondCol = flexCols[1] as JsonMap?;
+      final runs = secondCol?.getJson<List<dynamic>>(
+          'musicResponsiveListItemFlexColumnRenderer/text/runs');
+      if (runs != null) {
+        final parsed = runs.cast<Map<dynamic, dynamic>>().parseRuns();
+        if (parsed.isNotEmpty) return parsed;
+      }
+    }
+
+    return '';
+  }
+
+  String get channelId {
+    final standard = root.getJson<String>(
+            'ownerText/runs/0/navigationEndpoint/browseEndpoint/browseId') ??
+        root.getJson<String>(
+            'shortBylineText/runs/0/navigationEndpoint/browseEndpoint/browseId') ??
+        root.getJson<String>(
+            'longBylineText/runs/0/navigationEndpoint/browseEndpoint/browseId') ??
+        root.getJson<String>(
+            'bylineText/runs/0/navigationEndpoint/browseEndpoint/browseId') ??
+        root.getJson<String>(
+            'shortBylineText/runs/0/navigationEndpoint/showDialogCommand/panelLoadingStrategy/inlineContent/dialogViewModel/customContent/listViewModel/listItems/0/listItemViewModel/rendererContext/commandContext/onTap/innertubeCommand/browseEndpoint/browseId');
+    if (standard != null && standard.isNotEmpty) return standard;
+
+    final flexCols = root.getJson<List<dynamic>>('flexColumns');
+    if (flexCols != null && flexCols.length > 1) {
+      final secondCol = flexCols[1] as JsonMap?;
+      final runs = secondCol?.getJson<List<dynamic>>(
+          'musicResponsiveListItemFlexColumnRenderer/text/runs');
+      if (runs != null && runs.isNotEmpty) {
+        final bId = (runs.first as JsonMap?)?.getJson<String>(
+            'navigationEndpoint/browseEndpoint/browseId');
+        if (bId != null && bId.isNotEmpty) return bId;
+      }
+    }
+    return '';
+  }
+
+  String get title {
+    final runsTitle = root
+        .getJson<List<dynamic>>('title/runs')
+        ?.cast<Map<dynamic, dynamic>>()
+        .parseRuns();
+    if (runsTitle != null && runsTitle.isNotEmpty) return runsTitle;
+
+    final simpleTitle = root.getJson<String>('title/simpleText');
+    if (simpleTitle != null && simpleTitle.isNotEmpty) return simpleTitle;
+
+    // Fallback: musicResponsiveListItemRenderer flexColumns[0]
+    final flexCols = root.getJson<List<dynamic>>('flexColumns');
+    if (flexCols != null && flexCols.isNotEmpty) {
+      final firstCol = flexCols.first as JsonMap?;
+      final runs = firstCol?.getJson<List<dynamic>>(
+          'musicResponsiveListItemFlexColumnRenderer/text/runs');
+      if (runs != null) {
+        final parsed = runs.cast<Map<dynamic, dynamic>>().parseRuns();
+        if (parsed.isNotEmpty) return parsed;
+      }
+    }
+
+    return '';
+  }
 
   String get description =>
       root
@@ -254,8 +448,34 @@ class _Video {
           .parseRuns() ??
       '';
 
-  Duration? get duration =>
-      root.getJson<String>('lengthText/simpleText')?.toDuration();
+  Duration? get duration {
+    final simple = root.getJson<String>('lengthText/simpleText')?.toDuration();
+    if (simple != null) return simple;
+
+    final secStr = root.getJson<String>('lengthSeconds');
+    if (secStr != null) {
+      final sec = int.tryParse(secStr);
+      if (sec != null) return Duration(seconds: sec);
+    }
+
+    // Fallback: musicResponsiveListItemRenderer fixedColumns
+    final fixedCols = root.getJson<List<dynamic>>('fixedColumns');
+    if (fixedCols != null && fixedCols.isNotEmpty) {
+      final firstFixed = fixedCols.first as JsonMap?;
+      final fixedText = firstFixed?.getJson<String>(
+              'musicResponsiveListItemFixedColumnRenderer/text/simpleText') ??
+          firstFixed
+              ?.getJson<List<dynamic>>(
+                  'musicResponsiveListItemFixedColumnRenderer/text/runs')
+              ?.cast<Map<dynamic, dynamic>>()
+              .parseRuns();
+      if (fixedText != null && fixedText.isNotEmpty) {
+        return fixedText.toDuration();
+      }
+    }
+
+    return null;
+  }
 
   int get viewCount =>
       root.getJson<String>('viewCountText/simpleText').parseInt() ??

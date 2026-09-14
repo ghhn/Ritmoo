@@ -1,12 +1,12 @@
 /*
  *     Copyright (C) 2026 Valeri Gokadze
  *
- *     Musify is free software: you can redistribute it and/or modify
+ *     Ritmoo is free software: you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
  *     the Free Software Foundation, either version 3 of the License, or
  *     (at your option) any later version.
  *
- *     Musify is distributed in the hope that it will be useful,
+ *     Ritmoo is distributed in the hope that it will be useful,
  *     but WITHOUT ANY WARRANTY; without even the implied warranty of
  *     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *     GNU General Public License for more details.
@@ -15,31 +15,31 @@
  *     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  *
- *     For more information about Musify, including how to contribute,
- *     please visit: https://github.com/gokadzev/Musify
+ *     For more information about Ritmoo, including how to contribute,
+ *     please visit: https://github.com/gokadzev/Ritmoo
  */
 
 import 'dart:async';
 
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:flutter/material.dart';
-import 'package:musify/constants/app_constants.dart';
-import 'package:musify/extensions/l10n.dart';
-import 'package:musify/main.dart' show logger;
-import 'package:musify/services/common_services.dart';
-import 'package:musify/services/playlist_download_service.dart';
-import 'package:musify/services/playlists_manager.dart';
-import 'package:musify/services/router_service.dart';
-import 'package:musify/services/settings_manager.dart';
-import 'package:musify/utilities/app_utils.dart';
-import 'package:musify/utilities/async_loader.dart';
-import 'package:musify/utilities/flutter_toast.dart';
-import 'package:musify/utilities/offline_playlist_dialogs.dart';
-import 'package:musify/utilities/playlist_dialogs.dart';
-import 'package:musify/utilities/playlist_utils.dart';
-import 'package:musify/widgets/confirmation_dialog.dart';
-import 'package:musify/widgets/playlist_bar.dart';
-import 'package:musify/widgets/section_header.dart';
+import 'package:ritmoo/constants/app_constants.dart';
+import 'package:ritmoo/extensions/l10n.dart';
+import 'package:ritmoo/main.dart' show logger;
+import 'package:ritmoo/services/common_services.dart';
+import 'package:ritmoo/services/playlist_download_service.dart';
+import 'package:ritmoo/services/playlists_manager.dart';
+import 'package:ritmoo/services/router_service.dart';
+import 'package:ritmoo/services/settings_manager.dart';
+import 'package:ritmoo/utilities/app_utils.dart';
+import 'package:ritmoo/utilities/async_loader.dart';
+import 'package:ritmoo/utilities/flutter_toast.dart';
+import 'package:ritmoo/utilities/offline_playlist_dialogs.dart';
+import 'package:ritmoo/utilities/playlist_dialogs.dart';
+import 'package:ritmoo/utilities/playlist_utils.dart';
+import 'package:ritmoo/widgets/confirmation_dialog.dart';
+import 'package:ritmoo/widgets/playlist_bar.dart';
+import 'package:ritmoo/widgets/section_header.dart';
 
 class LibraryPage extends StatefulWidget {
   const LibraryPage({super.key});

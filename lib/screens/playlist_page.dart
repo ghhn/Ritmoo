@@ -1,12 +1,12 @@
 /*
  *     Copyright (C) 2026 Valeri Gokadze
  *
- *     Musify is free software: you can redistribute it and/or modify
+ *     Ritmoo is free software: you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
  *     the Free Software Foundation, either version 3 of the License, or
  *     (at your option) any later version.
  *
- *     Musify is distributed in the hope that it will be useful,
+ *     Ritmoo is distributed in the hope that it will be useful,
  *     but WITHOUT ANY WARRANTY; without even the implied warranty of
  *     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *     GNU General Public License for more details.
@@ -15,39 +15,40 @@
  *     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  *
- *     For more information about Musify, including how to contribute,
- *     please visit: https://github.com/gokadzev/Musify
+ *     For more information about Ritmoo, including how to contribute,
+ *     please visit: https://github.com/gokadzev/Ritmoo
  */
 
 import 'dart:async';
 
+import 'package:audio_service/audio_service.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:musify/constants/app_constants.dart';
-import 'package:musify/extensions/l10n.dart';
-import 'package:musify/main.dart';
-import 'package:musify/services/common_services.dart';
-import 'package:musify/services/data_manager.dart';
-import 'package:musify/services/playlist_download_service.dart';
-import 'package:musify/services/playlist_sharing.dart';
-import 'package:musify/services/playlists_manager.dart';
-import 'package:musify/services/settings_manager.dart';
-import 'package:musify/utilities/app_utils.dart';
-import 'package:musify/utilities/flutter_toast.dart';
-import 'package:musify/utilities/offline_playlist_dialogs.dart';
-import 'package:musify/utilities/playlist_dialogs.dart';
-import 'package:musify/utilities/playlist_utils.dart';
-import 'package:musify/utilities/song_filtering.dart';
-import 'package:musify/utilities/sort_utils.dart';
-import 'package:musify/widgets/edit_playlist_dialog.dart';
-import 'package:musify/widgets/playlist_cube.dart';
-import 'package:musify/widgets/playlist_page/empty_playlist_state.dart';
-import 'package:musify/widgets/playlist_page/playlist_header.dart';
-import 'package:musify/widgets/playlist_page/search_bar_section.dart';
-import 'package:musify/widgets/song_bar.dart';
-import 'package:musify/widgets/sort_chips.dart';
-import 'package:musify/widgets/spinner.dart';
+import 'package:ritmoo/constants/app_constants.dart';
+import 'package:ritmoo/extensions/l10n.dart';
+import 'package:ritmoo/main.dart';
+import 'package:ritmoo/services/common_services.dart';
+import 'package:ritmoo/services/data_manager.dart';
+import 'package:ritmoo/services/playlist_download_service.dart';
+import 'package:ritmoo/services/playlist_sharing.dart';
+import 'package:ritmoo/services/playlists_manager.dart';
+import 'package:ritmoo/services/settings_manager.dart';
+import 'package:ritmoo/utilities/app_utils.dart';
+import 'package:ritmoo/utilities/flutter_toast.dart';
+import 'package:ritmoo/utilities/offline_playlist_dialogs.dart';
+import 'package:ritmoo/utilities/playlist_dialogs.dart';
+import 'package:ritmoo/utilities/playlist_utils.dart';
+import 'package:ritmoo/utilities/song_filtering.dart';
+import 'package:ritmoo/utilities/sort_utils.dart';
+import 'package:ritmoo/widgets/edit_playlist_dialog.dart';
+import 'package:ritmoo/widgets/playlist_cube.dart';
+import 'package:ritmoo/widgets/playlist_page/empty_playlist_state.dart';
+import 'package:ritmoo/widgets/playlist_page/playlist_header.dart';
+import 'package:ritmoo/widgets/playlist_page/search_bar_section.dart';
+import 'package:ritmoo/widgets/song_bar.dart';
+import 'package:ritmoo/widgets/sort_chips.dart';
+import 'package:ritmoo/widgets/spinner.dart';
 
 enum PlaylistSortType { default_, title, artist }
 
@@ -71,8 +72,9 @@ class PlaylistPage extends StatefulWidget {
 
 class _PlaylistPageState extends State<PlaylistPage> {
   dynamic _playlist;
-  late final List<dynamic>
-  _originalPlaylistList; // Keep original order separately
+  // Initialize with an empty list to avoid LateInitializationError if
+  // _initializePlaylist() fails or completes after the widget is disposed.
+  List<dynamic> _originalPlaylistList = [];
 
   late final playlistLikeStatus = ValueNotifier<bool>(
     isPlaylistAlreadyLiked(widget.playlistId),
@@ -134,6 +136,22 @@ class _PlaylistPageState extends State<PlaylistPage> {
           resolvedId,
           isArtist: widget.isArtist,
         );
+      }
+
+      if (_playlist != null &&
+          (_playlist['list'] == null || (_playlist['list'] as List).isEmpty) &&
+          _playlist['title'] != null) {
+        final title = _playlist['title'].toString().trim();
+        if (title.isNotEmpty) {
+          final fallbackSongs = await searchFallbackForAlbum(
+            title,
+            playlistImage: _playlist['image'] as String?,
+            excludeId: resolvedId,
+          );
+          if (fallbackSongs.isNotEmpty) {
+            _playlist['list'] = fallbackSongs;
+          }
+        }
       }
 
       if (_playlist != null && _playlist['list'] != null) {
@@ -261,6 +279,11 @@ class _PlaylistPageState extends State<PlaylistPage> {
                       if (songs.isEmpty) return;
                       final shuffled = List<Map>.from(songs.whereType<Map>())
                         ..shuffle();
+                      // First activate shuffle mode in the audio handler so that
+                      // subsequent skip-next calls also play in random order.
+                      await audioHandler.setShuffleMode(
+                        AudioServiceShuffleMode.all,
+                      );
                       await audioHandler.addPlaylistToQueue(
                         shuffled,
                         replace: true,
@@ -279,6 +302,8 @@ class _PlaylistPageState extends State<PlaylistPage> {
             mainAxisAlignment: MainAxisAlignment.center,
             spacing: 5,
             children: [
+              if (!offlineMode.value && _playlist != null)
+                _buildMixRadioButton(),
               if (widget.playlistId != null &&
                   !isUserCreated &&
                   !offlineMode.value)
@@ -322,6 +347,19 @@ class _PlaylistPageState extends State<PlaylistPage> {
     );
   }
 
+  Widget _buildMixRadioButton() {
+    return IconButton.filledTonal(
+      icon: const Icon(FluentIcons.radio_button_24_filled),
+      iconSize: 24,
+      onPressed: () {
+        if (_playlist != null) {
+          unawaited(startMixRadio(context, seedPlaylist: _playlist));
+        }
+      },
+      tooltip: context.l10n?.startMixRadio ?? 'Start Mix Radio',
+    );
+  }
+
   Widget _buildShareButton() {
     return IconButton.filledTonal(
       icon: const Icon(FluentIcons.share_24_regular),
@@ -331,7 +369,7 @@ class _PlaylistPageState extends State<PlaylistPage> {
           final encodedPlaylist = PlaylistSharingService.encodePlaylist(
             _playlist,
           );
-          final url = 'musify://playlist/custom/$encodedPlaylist';
+          final url = 'ritmoo://playlist/custom/$encodedPlaylist';
           await Clipboard.setData(ClipboardData(text: url));
           if (mounted) {
             showToast(context, context.l10n!.linkCopied);

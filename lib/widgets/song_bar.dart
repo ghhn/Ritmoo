@@ -1,12 +1,12 @@
 /*
  *     Copyright (C) 2026 Valeri Gokadze
  *
- *     Musify is free software: you can redistribute it and/or modify
+ *     Ritmoo is free software: you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
  *     the Free Software Foundation, either version 3 of the License, or
  *     (at your option) any later version.
  *
- *     Musify is distributed in the hope that it will be useful,
+ *     Ritmoo is distributed in the hope that it will be useful,
  *     but WITHOUT ANY WARRANTY; without even the implied warranty of
  *     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *     GNU General Public License for more details.
@@ -15,8 +15,8 @@
  *     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  *
- *     For more information about Musify, including how to contribute,
- *     please visit: https://github.com/gokadzev/Musify
+ *     For more information about Ritmoo, including how to contribute,
+ *     please visit: https://github.com/gokadzev/Ritmoo
  */
 
 import 'dart:async';
@@ -25,17 +25,17 @@ import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:flutter/material.dart';
-import 'package:musify/constants/app_constants.dart';
-import 'package:musify/extensions/l10n.dart';
-import 'package:musify/main.dart';
-import 'package:musify/services/common_services.dart';
-import 'package:musify/services/playlists_manager.dart';
-import 'package:musify/services/settings_manager.dart';
-import 'package:musify/utilities/flutter_toast.dart';
-import 'package:musify/utilities/formatter.dart';
-import 'package:musify/utilities/playlist_dialogs.dart';
-import 'package:musify/widgets/no_artwork_cube.dart';
-import 'package:musify/widgets/rename_song_dialog.dart';
+import 'package:ritmoo/constants/app_constants.dart';
+import 'package:ritmoo/extensions/l10n.dart';
+import 'package:ritmoo/main.dart';
+import 'package:ritmoo/services/common_services.dart';
+import 'package:ritmoo/services/playlists_manager.dart';
+import 'package:ritmoo/services/settings_manager.dart';
+import 'package:ritmoo/utilities/flutter_toast.dart';
+import 'package:ritmoo/utilities/formatter.dart';
+import 'package:ritmoo/utilities/playlist_dialogs.dart';
+import 'package:ritmoo/widgets/no_artwork_cube.dart';
+import 'package:ritmoo/widgets/rename_song_dialog.dart';
 
 class SongBar extends StatefulWidget {
   const SongBar(
@@ -252,6 +252,13 @@ class _SongBarState extends State<SongBar> {
           duration: const Duration(seconds: 1),
         );
         break;
+      case 'artist_radio':
+        final artist = widget.song['artist']?.toString() ?? _songArtist;
+        unawaited(startArtistRadio(context, artist, seedSong: widget.song));
+        break;
+      case 'mix_radio':
+        unawaited(startMixRadio(context, seedSong: widget.song));
+        break;
       case 'like':
         final newValue = !_songLikeStatus.value;
         _songLikeStatus.value = newValue;
@@ -431,6 +438,40 @@ class _SongBarState extends State<SongBar> {
               const SizedBox(width: 8),
               Text(
                 addToQueueText,
+                style: TextStyle(color: colorScheme.secondary),
+              ),
+            ],
+          ),
+        ),
+      if (!offlineMode.value)
+        PopupMenuItem<String>(
+          value: 'mix_radio',
+          child: Row(
+            children: [
+              Icon(
+                FluentIcons.headphones_24_regular,
+                color: colorScheme.primary,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                l10n.startMixRadio,
+                style: TextStyle(color: colorScheme.secondary),
+              ),
+            ],
+          ),
+        ),
+      if (_songArtist.isNotEmpty && _songArtist.toLowerCase() != 'unknown')
+        PopupMenuItem<String>(
+          value: 'artist_radio',
+          child: Row(
+            children: [
+              Icon(
+                FluentIcons.radio_button_24_regular,
+                color: colorScheme.primary,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                l10n.startArtistRadio,
                 style: TextStyle(color: colorScheme.secondary),
               ),
             ],
