@@ -1,5 +1,5 @@
 /*
- *     Copyright (C) 2026 Valeri Gokadze
+ *     Copyright (C) 2026 ghhn
  *
  *     Ritmoo is free software: you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *
  *
  *     For more information about Ritmoo, including how to contribute,
- *     please visit: https://github.com/gokadzev/Ritmoo
+ *     please visit: https://github.com/ghhn/Ritmoo
  */
 
 import 'dart:async';
@@ -36,6 +36,7 @@ import 'package:ritmoo/services/lyrics_manager.dart';
 import 'package:ritmoo/services/playlists_manager.dart';
 import 'package:ritmoo/services/proxy_manager.dart';
 import 'package:ritmoo/services/settings_manager.dart';
+import 'package:ritmoo/services/youtube_timeout.dart';
 import 'package:ritmoo/utilities/app_utils.dart';
 import 'package:ritmoo/utilities/formatter.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
@@ -64,19 +65,18 @@ final lyrics = ValueNotifier<String?>(null);
 String? lastFetchedLyrics;
 
 // Timeouts and durations used across manifest fetching and cache validation.
-const Duration _manifestTimeout = Duration(seconds: 20);
-const Duration _perClientTimeout = Duration(seconds: 12);
+const Duration _manifestTimeout = Duration(seconds: 12);
+const Duration _perClientTimeout = Duration(seconds: 8);
 const Duration _cacheValidationDuration = Duration(hours: 1);
 
 // Ordered fallback clients to try when the primary list fails.
 final _fallbackClients = [
-  YoutubeApiClient.ios,
   YoutubeApiClient.androidVr,
-  YoutubeApiClient.androidSdkless,
-  YoutubeApiClient.androidMusic,
   YoutubeApiClient.tv,
-  YoutubeApiClient.android,
+  YoutubeApiClient.ios,
   YoutubeApiClient.mweb,
+  YoutubeApiClient.androidMusic,
+  YoutubeApiClient.androidSdkless,
 ];
 
 /// Fetches a stream manifest for a song, honoring proxy settings.
@@ -190,10 +190,31 @@ Future<bool> _validateCachedUrl(String cachedUrl) async {
   }
 }
 
+Future<bool> _validateStreamUrl(String streamUrl) async {
+  try {
+    final response = await http.head(
+      Uri.parse(streamUrl),
+      headers: {
+        'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
+        'Referer': 'https://www.youtube.com/',
+      },
+    ).timeout(const Duration(seconds: 6));
+
+    return response.statusCode >= 200 && response.statusCode < 300 ||
+        response.statusCode == 403;
+  } catch (_) {
+    return false;
+  }
+}
+
 Future<List> fetchSongsList(String searchQuery) async {
   try {
-    // If not in cache, perform the search
-    final List<Video> searchResults = await ytClient.search.search(searchQuery);
+    final searchResults = await youtubeRequest<List<Video>>(
+      operation: 'search songs for "$searchQuery"',
+      request: () => ytClient.search.search(searchQuery),
+      fallback: <Video>[],
+    );
     final songsList = searchResults
         .map((video) => returnSongLayout(0, video))
         .toList();
@@ -398,38 +419,13 @@ Map<String, dynamic> getOfflineSongByYtid(String ytid) {
 }
 
 Future<List<String>> getSearchSuggestions(String query) async {
-  // Custom implementation:
-
-  // const baseUrl = 'https://suggestqueries.google.com/complete/search';
-  // final parameters = {
-  //   'client': 'firefox',
-  //   'ds': 'yt',
-  //   'q': query,
-  // };
-
-  // final uri = Uri.parse(baseUrl).replace(queryParameters: parameters);
-
-  // try {
-  //   final response = await http.get(
-  //     uri,
-  //     headers: {
-  //       'User-Agent':
-  //           'Mozilla/5.0 (Windows NT 10.0; rv:96.0) Gecko/20100101 Firefox/96.0',
-  //     },
-  //   );
-
-  //   if (response.statusCode == 200) {
-  //     final suggestions = jsonDecode(response.body)[1] as List<dynamic>;
-  //     final suggestionStrings = suggestions.cast<String>().toList();
-  //     return suggestionStrings;
-  //   }
-  // } catch (e, stackTrace) {
-  //   logger.log('Error in getSearchSuggestions:$e\n$stackTrace');
-  // }
-
-  // Built-in implementation:
-
-  final suggestions = await ytClient.search.getQuerySuggestions(query);
+  // Built-in implementation with timeout guard.
+  final suggestions = await youtubeRequest<List<String>>(
+    operation: 'search suggestions for "$query"',
+    request: () => ytClient.search.getQuerySuggestions(query),
+    timeout: const Duration(seconds: 6),
+    fallback: <String>[],
+  );
 
   return suggestions;
 }
@@ -476,11 +472,23 @@ Future<List<Map<String, int>>> getSkipSegments(String id) async {
 Future<void> getSimilarSong(String songYtId) async {
   try {
     if (!offlineMode.value) {
-      final song = await ytClient.videos.get(songYtId);
-      final relatedSongs = await ytClient.videos.getRelatedVideos(song) ?? [];
+      final song = await youtubeRequest<Video?>(
+        operation: 'fetch similar song details for $songYtId',
+        request: () => ytClient.videos.get(songYtId),
+      );
+      if (song == null) {
+        throw const FormatException('No video metadata returned');
+      }
+        final relatedSongs = await youtubeRequest<List<Video>>(
+          operation: 'fetch related songs for $songYtId',
+          request: () async {
+            final videos = await ytClient.videos.getRelatedVideos(song);
+            return videos ?? const <Video>[];
+          },
+        );
 
       if (relatedSongs.isNotEmpty) {
-        nextRecommendedSong = returnSongLayout(0, relatedSongs[0]);
+        nextRecommendedSong = returnSongLayout(0, relatedSongs.first);
         return;
       }
     }
@@ -569,6 +577,23 @@ Future<String?> fetchSongStreamUrl(String songId, bool isLive) async {
       return null;
     }
 
+    final streamCandidates = List<AudioOnlyStreamInfo>.from(
+      audioStreams.sortByBitrate(),
+    )..sort((a, b) => b.bitrate.compareTo(a.bitrate));
+
+    for (final stream in streamCandidates) {
+      final url = stream.url.toString();
+      if (url.isEmpty) continue;
+
+      final urlIsValid = await _validateStreamUrl(url);
+      if (urlIsValid) {
+        unawaited(addOrUpdateData('cache', cacheKey, url));
+        return url;
+      }
+
+      logger.log('Skipping non-playable stream candidate for $songId: $url');
+    }
+
     final selectedStream = selectAudioOnlyStreamForQuality(
       audioStreams.sortByBitrate(),
     );
@@ -595,7 +620,13 @@ Future<Map<String, dynamic>> getSongDetails(
   String songId,
 ) async {
   try {
-    final song = await ytClient.videos.get(songId);
+    final song = await youtubeRequest<Video?>(
+      operation: 'fetch song details for $songId',
+      request: () => ytClient.videos.get(songId),
+    );
+    if (song == null) {
+      return <String, dynamic>{};
+    }
     return returnSongLayout(songIndex, song);
   } catch (e, stackTrace) {
     logger.log(

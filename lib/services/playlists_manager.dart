@@ -1,5 +1,5 @@
 /*
- *     Copyright (C) 2026 Valeri Gokadze
+ *     Copyright (C) 2026 ghhn
  *
  *     Ritmoo is free software: you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *
  *
  *     For more information about Ritmoo, including how to contribute,
- *     please visit: https://github.com/gokadzev/Ritmoo
+ *     please visit: https://github.com/ghhn/Ritmoo
  */
 
 import 'dart:async';
@@ -32,6 +32,7 @@ import 'package:ritmoo/services/data_manager.dart';
 import 'package:ritmoo/services/playlist_download_service.dart';
 import 'package:ritmoo/services/proxy_manager.dart';
 import 'package:ritmoo/services/settings_manager.dart';
+import 'package:ritmoo/services/youtube_timeout.dart';
 import 'package:ritmoo/utilities/app_utils.dart';
 import 'package:ritmoo/utilities/flutter_toast.dart';
 import 'package:ritmoo/utilities/formatter.dart';
@@ -740,11 +741,15 @@ Future<List> getPlaylists({
 
     final searchTerm = type == 'album' ? '$query album' : query;
 
-    late final Iterable searchResultsIterable;
+    Iterable<dynamic> searchResultsIterable = const <dynamic>[];
     try {
-      searchResultsIterable = await ytClient.search.searchContent(
-        searchTerm,
-        filter: TypeFilters.playlist,
+      searchResultsIterable = await youtubeRequest<Iterable<dynamic>>(
+        operation: 'search playlists for "$searchTerm"',
+        request: () => ytClient.search.searchContent(
+          searchTerm,
+          filter: TypeFilters.playlist,
+        ),
+        fallback: const <dynamic>[],
       );
     } catch (e, st) {
       logger.log(
@@ -756,9 +761,13 @@ Future<List> getPlaylists({
         final proxyYt = await ProxyManager().getYoutubeExplodeClient();
         if (proxyYt != null) {
           try {
-            searchResultsIterable = await proxyYt.search.searchContent(
-              searchTerm,
-              filter: TypeFilters.playlist,
+            searchResultsIterable = await youtubeRequest<Iterable<dynamic>>(
+              operation: 'proxy search playlists for "$searchTerm"',
+              request: () => proxyYt.search.searchContent(
+                searchTerm,
+                filter: TypeFilters.playlist,
+              ),
+              fallback: const <dynamic>[],
             );
           } catch (e2, st2) {
             logger.log('Proxy search failed:', error: e2, stackTrace: st2);
@@ -787,6 +796,7 @@ Future<List> getPlaylists({
             'ytid': playlist.id.toString(),
             'title': playlist.title,
             'source': 'youtube',
+            'isAlbum': type == 'album',
             'list': [],
           };
           if (!existingYtIds.contains(playlistMap['ytid'])) {
@@ -891,7 +901,11 @@ Future<Map?> getPlaylistInfoForWidget(
 
 Future<Map> _fetchArtistPlaylist(String artistName) async {
   try {
-    final searchResults = await ytClient.search.search(artistName);
+    final searchResults = await youtubeRequest<List<Video>>(
+      operation: 'fetch artist playlist for "$artistName"',
+      request: () => ytClient.search.search(artistName),
+      fallback: <Video>[],
+    );
     return {
       'title': artistName,
       'list': searchResults.map((v) => returnSongLayout(0, v)).toList(),
@@ -953,7 +967,13 @@ Future<Map?> _fetchYouTubePlaylist(String id) async {
   // 4. Fetch from YouTube as a last resort.
   if (playlist == null) {
     try {
-      final ytPlaylist = await ytClient.playlists.get(id);
+      final ytPlaylist = await youtubeRequest<Playlist?>(
+        operation: 'fetch playlist info for $id',
+        request: () => ytClient.playlists.get(id),
+      );
+      if (ytPlaylist == null) {
+        return null;
+      }
       playlist = {
         'ytid': ytPlaylist.id.toString(),
         'title': ytPlaylist.title,
@@ -1035,18 +1055,24 @@ Future<List> searchFallbackForAlbum(
   String? playlistImage,
   String? excludeId,
 }) async {
+  final cleanExcludeId = excludeId != null
+      ? (excludeId.startsWith('VL') ? excludeId.substring(2) : excludeId)
+      : null;
+
   // 1. Try finding an alternative playlist on YouTube for this album
   try {
     final searchContent = await ytClient.search
         .searchContent('$title album', filter: TypeFilters.playlist)
         .timeout(const Duration(seconds: 15));
 
-    for (final item in searchContent) {
+    for (final item in searchContent.take(2)) {
       if (item is SearchPlaylist) {
         final candidateId = item.id.value;
-        if (candidateId != excludeId &&
-            candidateId != 'VL$excludeId' &&
-            candidateId.isNotEmpty) {
+        final cleanCandidateId = candidateId.startsWith('VL')
+            ? candidateId.substring(2)
+            : candidateId;
+        if (cleanCandidateId != cleanExcludeId &&
+            cleanCandidateId.isNotEmpty) {
           final candidateSongs = await getSongsFromPlaylist(
             candidateId,
             playlistImage: playlistImage,
@@ -1070,9 +1096,10 @@ Future<List> searchFallbackForAlbum(
         .search(title)
         .timeout(const Duration(seconds: 15));
     if (searchResults.isNotEmpty) {
+      var idx = 0;
       final songs = searchResults
           .take(30)
-          .map((video) => returnSongLayout(0, video, playlistImage: playlistImage))
+          .map((video) => returnSongLayout(idx++, video, playlistImage: playlistImage))
           .toList();
       logger.log(
         'Direct search fallback succeeded with ${songs.length} songs for "$title"',
@@ -1109,7 +1136,7 @@ Future<List> getSongsFromPlaylist(
   try {
     await for (final song in ytClient.playlists
         .getVideos(normalizedId)
-        .timeout(const Duration(seconds: 30))) {
+        .timeout(const Duration(seconds: 10))) {
       songList.add(
         returnSongLayout(songList.length, song, playlistImage: playlistImage),
       );
@@ -1123,6 +1150,12 @@ Future<List> getSongsFromPlaylist(
     networkFailed = true;
   }
 
+  // Fast return: if first attempt failed or was empty, and we have valid cached data, return it immediately!
+  if ((networkFailed || songList.isEmpty) && cachedList != null) {
+    logger.log('Fast return: using cached song list for $playlistId (${cachedList.length} songs)');
+    return cachedList;
+  }
+
   // Second attempt: try a fresh YoutubeExplode instance with different headers
   if (networkFailed || songList.isEmpty) {
     YoutubeExplode? freshYt;
@@ -1130,7 +1163,7 @@ Future<List> getSongsFromPlaylist(
       freshYt = YoutubeExplode();
       await for (final song in freshYt.playlists
           .getVideos(normalizedId)
-          .timeout(const Duration(seconds: 25))) {
+          .timeout(const Duration(seconds: 8))) {
         songList.add(
           returnSongLayout(songList.length, song, playlistImage: playlistImage),
         );
@@ -1150,7 +1183,7 @@ Future<List> getSongsFromPlaylist(
     try {
       await for (final song in ytClient.playlists
           .getVideos(rawId)
-          .timeout(const Duration(seconds: 25))) {
+          .timeout(const Duration(seconds: 8))) {
         songList.add(
           returnSongLayout(songList.length, song, playlistImage: playlistImage),
         );
@@ -1168,7 +1201,7 @@ Future<List> getSongsFromPlaylist(
       try {
         await for (final song in proxyYt.playlists
             .getVideos(normalizedId)
-            .timeout(const Duration(seconds: 25))) {
+            .timeout(const Duration(seconds: 8))) {
           songList.add(
             returnSongLayout(
               songList.length,
@@ -1198,11 +1231,6 @@ Future<List> getSongsFromPlaylist(
   if (cachedList != null) {
     logger.log('All network attempts failed for $playlistId, using cached song list');
     return cachedList;
-  }
-
-  // Network returned empty (playlist truly empty) — clear stale cache
-  if (!networkFailed && cachedList != null) {
-    unawaited(deleteData('cache', cacheKey));
   }
 
   return songList;
@@ -1285,12 +1313,33 @@ Future<void> startArtistRadio(
       radioList.addAll(localMatches);
     }
 
+    // If still have few songs, replenish with album and related artists
+    if (radioList.length < 8) {
+      final excluded = radioList
+          .where((s) => s is Map && s['ytid'] != null && s['ytid'].toString().isNotEmpty)
+          .map((s) => s['ytid'].toString())
+          .toSet();
+      final more = await getInfiniteRelatedSongsFromAlbums(
+        seedArtist: cleanArtist,
+        seedSong: seedSong,
+        limit: 12 - radioList.length,
+        excludedYtIds: excluded,
+      );
+      radioList.addAll(more);
+    }
+
     if (radioList.isNotEmpty) {
       final radioTitle = context.mounted
           ? '${context.l10n?.artistRadio ?? "Artist Radio"} • $cleanArtist'
           : 'Radio • $cleanArtist';
       await audioHandler.playPlaylistSong(
-        playlist: {'title': radioTitle, 'list': radioList},
+        playlist: {
+          'title': radioTitle,
+          'list': radioList,
+          'isRadio': true,
+          'seedArtist': cleanArtist,
+          'seedSong': seedSong,
+        },
         songIndex: 0,
       );
     } else {
@@ -1315,9 +1364,10 @@ List<String> getAlbumArtists() {
       if (title.contains(' - ')) {
         final parts = title.split(' - ');
         if (parts.length >= 2) {
-          artists
-            ..add(parts[0].trim())
-            ..add(parts[1].trim());
+          final artist = parts.sublist(1).join(' - ').trim();
+          if (artist.isNotEmpty) {
+            artists.add(artist);
+          }
         }
       }
     }
@@ -1372,9 +1422,19 @@ Future<List<Map>> getInfiniteRelatedSongsFromAlbums({
 
   // 3. Online fetch: query top songs from related album artists
   if (!offlineMode.value && relatedArtists.isNotEmpty) {
-    final artistsToQuery = (List<String>.from(relatedArtists)..shuffle()).take(3);
+    final artistsToQuery = <String>[];
+    if (targetArtist.isNotEmpty && targetArtist.toLowerCase() != 'unknown') {
+      artistsToQuery.add(targetArtist);
+    }
+    final otherArtists = (List<String>.from(relatedArtists)
+          ..removeWhere((a) => a.toLowerCase() == targetArtist.toLowerCase())
+          ..shuffle())
+        .take(3);
+    artistsToQuery.addAll(otherArtists);
+
     for (final artist in artistsToQuery) {
       if (resultSongs.length >= limit) break;
+      var searchSuccess = false;
       try {
         final searchResults = await ytClient.search.search('$artist songs');
         for (final video in searchResults) {
@@ -1384,8 +1444,31 @@ Future<List<Map>> getInfiniteRelatedSongsFromAlbums({
             if (resultSongs.length >= limit) break;
           }
         }
+        if (resultSongs.isNotEmpty) searchSuccess = true;
       } catch (e) {
         logger.log('Error fetching infinite album-related songs for $artist: $e');
+      }
+
+      if (!searchSuccess && useProxy.value && resultSongs.length < limit) {
+        final proxyYt = await ProxyManager().getYoutubeExplodeClient();
+        if (proxyYt != null) {
+          try {
+            final searchResults = await proxyYt.search.search('$artist songs');
+            for (final video in searchResults) {
+              final ytid = video.id.toString();
+              if (seenYtIds.add(ytid)) {
+                resultSongs.add(returnSongLayout(resultSongs.length, video));
+                if (resultSongs.length >= limit) break;
+              }
+            }
+          } catch (pe) {
+            logger.log('Proxy search failed for $artist: $pe');
+          } finally {
+            try {
+              proxyYt.close();
+            } catch (_) {}
+          }
+        }
       }
     }
   }
@@ -1410,17 +1493,35 @@ Future<List<Map>> getInfiniteRelatedSongsFromAlbums({
     );
     final userBox = Hive.box('user');
     final liked = List<Map>.from(userBox.get('likedSongs', defaultValue: []));
-    pool
-      ..addAll(liked.where(
-        (s) => s['ytid'] != null && s['ytid'].toString().isNotEmpty,
-      ))
-      ..shuffle();
+    pool.addAll(liked.where(
+      (s) => s['ytid'] != null && s['ytid'].toString().isNotEmpty,
+    ));
 
-    for (final song in pool) {
-      final ytid = song['ytid']?.toString();
-      if (ytid != null && ytid.isNotEmpty && seenYtIds.add(ytid)) {
-        resultSongs.add(Map<String, dynamic>.from(song));
-        if (resultSongs.length >= limit) break;
+    // Prioritize songs that match targetArtist if possible
+    if (targetArtist.isNotEmpty && targetArtist.toLowerCase() != 'unknown') {
+      final targetLower = targetArtist.toLowerCase();
+      final matchingSongs = pool
+          .where((s) =>
+              (s['artist']?.toString().toLowerCase() ?? '').contains(targetLower))
+          .toList()
+        ..shuffle();
+      for (final song in matchingSongs) {
+        final ytid = song['ytid']?.toString();
+        if (ytid != null && ytid.isNotEmpty && seenYtIds.add(ytid)) {
+          resultSongs.add(Map<String, dynamic>.from(song));
+          if (resultSongs.length >= limit) break;
+        }
+      }
+    }
+
+    if (resultSongs.length < limit) {
+      pool.shuffle();
+      for (final song in pool) {
+        final ytid = song['ytid']?.toString();
+        if (ytid != null && ytid.isNotEmpty && seenYtIds.add(ytid)) {
+          resultSongs.add(Map<String, dynamic>.from(song));
+          if (resultSongs.length >= limit) break;
+        }
       }
     }
   }
@@ -1491,6 +1592,9 @@ Future<void> startMixRadio(
         'title': radioTitle,
         'list': initialList,
         'isRadio': true,
+        'seedSong': seedSong,
+        'seedPlaylist': seedPlaylist,
+        'seedArtist': seedArtist,
       },
       songIndex: 0,
     );
