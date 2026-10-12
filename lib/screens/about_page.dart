@@ -1,4 +1,4 @@
-/*
+﻿/*
  *     Copyright (C) 2026 ghhn
  *
  *     Ritmoo is free software: you can redistribute it and/or modify
@@ -101,10 +101,19 @@ class AboutPage extends StatelessWidget {
                     ClipRRect(
                       borderRadius: BorderRadius.circular(14),
                       child: Image.network(
-                        'https://avatars.githubusercontent.com/u/79704324?v=4',
+                        'https://github.com/ghhn.png',
                         width: 52,
                         height: 52,
                         fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Container(
+                          width: 52,
+                          height: 52,
+                          color: Theme.of(context).colorScheme.primaryContainer,
+                          child: Icon(
+                            FluentIcons.person_24_filled,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 14),
@@ -117,12 +126,12 @@ class AboutPage extends StatelessWidget {
                             style: TextStyle(
                               color: Theme.of(context).colorScheme.onSurface,
                               fontWeight: FontWeight.w600,
-                              fontSize: 15,
+                              fontSize: 16,
                             ),
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            'WEB & APP Developer',
+                            'GitHub: @ghhn',
                             style: TextStyle(
                               color: Theme.of(
                                 context,
@@ -140,17 +149,17 @@ class AboutPage extends StatelessWidget {
                       children: [
                         _SocialButton(
                           icon: FluentIcons.code_24_filled,
-                          tooltip: 'Github',
+                          tooltip: 'GitHub',
                           onPressed: () {
                             launchURL(Uri.parse('https://github.com/ghhn'));
                           },
                         ),
                         const SizedBox(width: 8),
                         _SocialButton(
-                          icon: FluentIcons.globe_24_filled,
-                          tooltip: 'Website',
+                          icon: FluentIcons.music_note_2_24_filled,
+                          tooltip: 'Ritmoo',
                           onPressed: () {
-                            launchURL(Uri.parse('https://ghhn.github.io'));
+                            launchURL(Uri.parse('https://github.com/ghhn/Ritmoo'));
                           },
                         ),
                       ],

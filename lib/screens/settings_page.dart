@@ -418,27 +418,9 @@ class SettingsPage extends StatelessWidget {
           icon: FluentIcons.more_circle_24_filled,
         ),
         CustomBar(
-          context.l10n!.licenses,
-          FluentIcons.document_24_regular,
-          borderRadius: commonCustomBarRadiusFirst,
-          onTap: () => NavigationManager.router.go('/settings/license'),
-        ),
-        CustomBar(
-          context.l10n!.translate,
-          FluentIcons.translate_24_regular,
-          description: context.l10n!.translateDescription,
-          onTap: () =>
-              launchURL(Uri.parse('https://crowdin.com/project/ritmoo')),
-        ),
-        CustomBar(
-          '${context.l10n!.copyLogs} (${logger.getLogCount()})',
-          FluentIcons.error_circle_24_regular,
-          onTap: () async => showToast(context, await logger.copyLogs(context)),
-        ),
-        CustomBar(
           context.l10n!.about,
           FluentIcons.book_information_24_regular,
-          borderRadius: commonCustomBarRadiusLast,
+          borderRadius: commonCustomBarRadius,
           onTap: () => NavigationManager.router.go('/settings/about'),
         ),
       ],
