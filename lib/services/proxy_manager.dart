@@ -113,17 +113,17 @@ class ProxyManager {
 
   String? _sharedProxyAddress;
 
-  Future<void> _fetchProxies() async {
-    if (!useProxy.value) return;
+  Future<void> _fetchProxies({bool force = false}) async {
+    if (!useProxy.value && !force) return;
     try {
       // Clear existing candidates to avoid duplicates and stale proxies
       _proxiesByCountry.clear();
 
       final fetchTasks = <Future>[]
-        ..add(_fetchProxyScrape())
-        ..add(_fetchGeonode())
-        ..add(_fetchOpenProxyList())
-        ..add(_fetchSpysMe());
+        ..add(_fetchProxyScrape(force: force))
+        ..add(_fetchGeonode(force: force))
+        ..add(_fetchOpenProxyList(force: force))
+        ..add(_fetchSpysMe(force: force));
       _fetchingProxiesFuture = Future.wait(fetchTasks);
       await _fetchingProxiesFuture?.whenComplete(() {
         _hasFetched = true;
@@ -275,9 +275,10 @@ class ProxyManager {
   Future<StreamManifest?> _validateProxy(
     ProxyInfo proxy,
     String songId,
-    int timeoutSeconds,
-  ) async {
-    if (!useProxy.value) return null;
+    int timeoutSeconds, {
+    bool force = false,
+  }) async {
+    if (!useProxy.value && !force) return null;
     YoutubeExplode? ytClient;
     var shouldCloseClient = false;
     try {
@@ -331,11 +332,11 @@ class ProxyManager {
     }
   }
 
-  Future<ProxyInfo?> _getRandomProxy({String? preferredCountry}) async {
-    if (!useProxy.value) return null;
+  Future<ProxyInfo?> _getRandomProxy({String? preferredCountry, bool force = false}) async {
+    if (!useProxy.value && !force) return null;
     try {
-      if (!_hasFetched) await (_fetchingProxiesFuture ?? _fetchProxies());
-      if (_hasFetched && _proxiesByCountry.isEmpty) await _fetchProxies();
+      if (!_hasFetched) await (_fetchingProxiesFuture ?? _fetchProxies(force: force));
+      if (_hasFetched && _proxiesByCountry.isEmpty) await _fetchProxies(force: force);
       if (_proxiesByCountry.isEmpty) return null;
 
       ProxyInfo proxy;
@@ -515,38 +516,45 @@ class ProxyManager {
     );
   }
 
-  Future<StreamManifest?> getSongManifest(String songId) async {
-    if (!useProxy.value) {
+  Future<StreamManifest?> getSongManifest(
+    String songId, {
+    bool forceProxy = false,
+  }) async {
+    if (!useProxy.value && !forceProxy) {
       return _validateDirect(songId, _validateDirectTimeout);
     }
-    var manifest = await _validateDirect(songId, _validateDirectTimeout);
-    if (manifest != null) return manifest;
+    if (!forceProxy) {
+      final manifest = await _validateDirect(songId, _validateDirectTimeout);
+      if (manifest != null && manifest.audioOnly.isNotEmpty) return manifest;
+    }
 
     if (DateTime.now().difference(_lastFetched).inMinutes >=
         _proxyRefreshIntervalMinutes) {
-      await _fetchProxies();
+      await _fetchProxies(force: forceProxy);
     }
 
     _maybeCleanupProxies();
 
-    manifest = await _tryProxies(songId);
-    return manifest;
+    final manifest = await _tryProxies(songId, force: forceProxy);
+    if (manifest != null && manifest.audioOnly.isNotEmpty) {
+      return manifest;
+    }
+    return _validateDirect(songId, _validateDirectTimeout);
   }
 
-  Future<StreamManifest?> _tryProxies(String songId) async {
-    if (!useProxy.value) return null;
+  Future<StreamManifest?> _tryProxies(String songId, {bool force = false}) async {
+    if (!useProxy.value && !force) return null;
     StreamManifest? manifest;
     var attempts = 0;
-    const maxAttempts = 5;
+    const maxAttempts = 3;
     do {
       if (attempts++ >= maxAttempts) break;
-      final proxy = await _getRandomProxy();
+      final proxy = await _getRandomProxy(force: force);
       if (proxy == null) break;
-      manifest = await _validateProxy(proxy, songId, 5);
+      manifest = await _validateProxy(proxy, songId, 5, force: force);
     } while (manifest == null);
     return manifest;
   }
-
   /// Performs an HTTP GET request that respects current proxy settings.
   Future<http.Response> getProxiedResponse(
     Uri uri, {
@@ -604,11 +612,12 @@ class ProxyManager {
   /// HTTP connections and memory.
   Future<YoutubeExplode?> getYoutubeExplodeClient({
     int timeoutSeconds = 5,
+    bool force = false,
   }) async {
-    if (!useProxy.value) return null;
-    if (!_hasFetched) await _fetchProxies();
+    if (!useProxy.value && !force) return null;
+    if (!_hasFetched) await _fetchProxies(force: force);
 
-    if (_proxiesByCountry.isEmpty) await _fetchProxies();
+    if (_proxiesByCountry.isEmpty) await _fetchProxies(force: force);
 
     if (_proxiesByCountry.isEmpty) return null;
 
@@ -641,8 +650,8 @@ class ProxyManager {
     return null;
   }
 
-  Future<void> _fetchSpysMe() async {
-    if (!useProxy.value) return;
+  Future<void> _fetchSpysMe({bool force = false}) async {
+    if (!useProxy.value && !force) return;
     try {
       const url = 'https://spys.me/proxy.txt';
       final response = await http
@@ -689,8 +698,8 @@ class ProxyManager {
     );
   }
 
-  Future<void> _fetchProxyScrape() async {
-    if (!useProxy.value) return;
+  Future<void> _fetchProxyScrape({bool force = false}) async {
+    if (!useProxy.value && !force) return;
     try {
       const url =
           'https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&proxy_format=protocolipport&format=json&protocol=http&ssl=yes';
@@ -732,8 +741,8 @@ class ProxyManager {
     }
   }
 
-  Future<void> _fetchOpenProxyList() async {
-    if (!useProxy.value) return;
+  Future<void> _fetchOpenProxyList({bool force = false}) async {
+    if (!useProxy.value && !force) return;
     try {
       const url =
           'https://raw.githubusercontent.com/roosterkid/openproxylist/main/HTTPS.txt';
@@ -764,8 +773,8 @@ class ProxyManager {
     }
   }
 
-  Future<void> _fetchGeonode() async {
-    if (!useProxy.value) return;
+  Future<void> _fetchGeonode({bool force = false}) async {
+    if (!useProxy.value && !force) return;
     try {
       const url =
           'https://proxylist.geonode.com/api/proxy-list?limit=50&page=1&sort_by=lastChecked&sort_type=desc&protocols=http%2Chttps';

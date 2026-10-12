@@ -1,16 +1,16 @@
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
 // Multiple clients in priority order. When one fails, the next is tried.
-// ios and androidVr avoid PO Token requirements and 403 Forbidden errors on YouTube CDN.
+// androidSdkless (official Android app 20.x), androidVr, tv, and ios
+// avoid PO Token requirements, cipher signature throttling, and 403 Forbidden errors.
 final customClients = [
+  YoutubeApiClient.androidSdkless,
   YoutubeApiClient.androidVr,
   YoutubeApiClient.tv,
   YoutubeApiClient.ios,
-  YoutubeApiClient.mweb,
   YoutubeApiClient.androidMusic,
-  YoutubeApiClient.androidSdkless,
+  YoutubeApiClient.mweb,
 ];
 
 // Legacy single client kept for manifest fetches that accept a list.
-const customAndroidVr = YoutubeApiClient.androidVr;
-
+const customAndroidVr = YoutubeApiClient.androidSdkless;

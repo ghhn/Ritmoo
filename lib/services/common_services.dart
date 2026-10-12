@@ -83,11 +83,21 @@ final _fallbackClients = [
 /// Tries the configured client list first, then falls back to individual
 /// clients one by one to maximize success rate.
 Future<StreamManifest?> _fetchStreamManifest(String songId) async {
+  // If user explicitly enabled useProxy, try proxy first with graceful fallback to direct
   if (useProxy.value) {
-    return ProxyManager().getSongManifest(songId).timeout(_manifestTimeout);
+    try {
+      final proxyManifest = await ProxyManager()
+          .getSongManifest(songId)
+          .timeout(_manifestTimeout);
+      if (proxyManifest != null && proxyManifest.audioOnly.isNotEmpty) {
+        return proxyManifest;
+      }
+    } catch (e) {
+      logger.log('Proxy manifest fetch failed for $songId, falling back to direct: $e');
+    }
   }
 
-  // Fast direct attempt: bypasses scraping the web watch page
+  // 1. Fast direct attempt: bypasses scraping the web watch page
   try {
     final result = await ytClient.videos.streams
         .getManifest(songId, ytClients: customClients, requireWatchPage: false)
@@ -99,7 +109,7 @@ Future<StreamManifest?> _fetchStreamManifest(String songId) async {
     logger.log('Fast direct client list failed for $songId, trying standard: $e');
   }
 
-  // Standard attempt: with watch page if deciphering is needed
+  // 2. Standard direct attempt: with watch page if deciphering is needed
   try {
     final result = await ytClient.videos.streams
         .getManifest(songId, ytClients: customClients)
@@ -111,7 +121,7 @@ Future<StreamManifest?> _fetchStreamManifest(String songId) async {
     logger.log('Primary client list failed for $songId, trying fallbacks: $e');
   }
 
-  // Fallback: try each client individually
+  // 3. Fallback direct clients: try each client individually
   for (final client in _fallbackClients) {
     try {
       final result = await ytClient.videos.streams
@@ -136,9 +146,26 @@ Future<StreamManifest?> _fetchStreamManifest(String songId) async {
     }
   }
 
+  // 4. Automatic transparent proxy fallback if direct connections failed:
+  // Allows videos/songs to load even under ISP or regional restrictions
+  // without the user needing to manually activate proxy in settings.
+  if (!useProxy.value) {
+    logger.log('All direct attempts failed for $songId. Automatically falling back to proxy...');
+    try {
+      final proxyManifest = await ProxyManager()
+          .getSongManifest(songId, forceProxy: true)
+          .timeout(_manifestTimeout);
+      if (proxyManifest != null && proxyManifest.audioOnly.isNotEmpty) {
+        logger.log('Automatic proxy fallback succeeded for $songId');
+        return proxyManifest;
+      }
+    } catch (e) {
+      logger.log('Automatic proxy fallback failed for $songId: $e');
+    }
+  }
+
   return null;
 }
-
 /// Returns a cached song URL if present and still valid.
 Future<String?> _getCachedSongUrl(
   String cacheKey,

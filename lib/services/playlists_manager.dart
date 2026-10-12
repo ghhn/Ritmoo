@@ -757,8 +757,8 @@ Future<List> getPlaylists({
         error: e,
         stackTrace: st,
       );
-      if (useProxy.value) {
-        final proxyYt = await ProxyManager().getYoutubeExplodeClient();
+      if (searchResultsIterable.isEmpty) {
+        final proxyYt = await ProxyManager().getYoutubeExplodeClient(force: true);
         if (proxyYt != null) {
           try {
             searchResultsIterable = await youtubeRequest<Iterable<dynamic>>(
@@ -1195,8 +1195,8 @@ Future<List> getSongsFromPlaylist(
   }
 
   // Third attempt: try proxy fallback if enabled
-  if ((networkFailed || songList.isEmpty) && useProxy.value) {
-    final proxyYt = await ProxyManager().getYoutubeExplodeClient();
+  if (networkFailed || songList.isEmpty) {
+    final proxyYt = await ProxyManager().getYoutubeExplodeClient(force: true);
     if (proxyYt != null) {
       try {
         await for (final song in proxyYt.playlists
@@ -1271,8 +1271,8 @@ Future<void> startArtistRadio(
           error: e,
           stackTrace: st,
         );
-        if (useProxy.value) {
-          final proxyYt = await ProxyManager().getYoutubeExplodeClient();
+        if (searchResults.isEmpty) {
+          final proxyYt = await ProxyManager().getYoutubeExplodeClient(force: true);
           if (proxyYt != null) {
             try {
               final results = await proxyYt.search.search('$cleanArtist songs');
@@ -1449,8 +1449,8 @@ Future<List<Map>> getInfiniteRelatedSongsFromAlbums({
         logger.log('Error fetching infinite album-related songs for $artist: $e');
       }
 
-      if (!searchSuccess && useProxy.value && resultSongs.length < limit) {
-        final proxyYt = await ProxyManager().getYoutubeExplodeClient();
+      if (!searchSuccess && resultSongs.length < limit) {
+        final proxyYt = await ProxyManager().getYoutubeExplodeClient(force: true);
         if (proxyYt != null) {
           try {
             final searchResults = await proxyYt.search.search('$artist songs');
