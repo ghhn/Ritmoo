@@ -1,4 +1,4 @@
-/*
+﻿/*
  *     Copyright (C) 2026 ghhn
  *
  *     Ritmoo is free software: you can redistribute it and/or modify
@@ -1604,11 +1604,6 @@ class RitmooAudioHandler extends BaseAudioHandler {
       final uri = Uri.parse(songUrl);
       final audioSource = AudioSource.uri(
         uri,
-        headers: const {
-          'User-Agent':
-              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
-          'Referer': 'https://www.youtube.com/',
-        },
         tag: tag,
       );
 

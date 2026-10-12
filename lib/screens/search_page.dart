@@ -1,4 +1,4 @@
-/*
+﻿/*
  *     Copyright (C) 2026 ghhn
  *
  *     Ritmoo is free software: you can redistribute it and/or modify
@@ -114,12 +114,20 @@ class _SearchPageState extends State<SearchPage> {
     }
 
     try {
-      _songsSearchResult = await fetchSongsList(query);
-      _albumsSearchResult = await getPlaylists(query: query, type: 'album');
-      _playlistsSearchResult = await getPlaylists(
+      final songsFuture = fetchSongsList(query);
+      final albumsFuture = getPlaylists(query: query, type: 'album');
+      final playlistsFuture = getPlaylists(
         query: query,
         type: 'playlist',
       );
+
+      _songsSearchResult = await songsFuture;
+      _fetchingSongs.value = false;
+      if (mounted) setState(() {});
+
+      final extraResults = await Future.wait([albumsFuture, playlistsFuture]);
+      _albumsSearchResult = extraResults[0];
+      _playlistsSearchResult = extraResults[1];
     } catch (e, stackTrace) {
       logger.log(
         'Error while searching online songs',

@@ -1,4 +1,4 @@
-/*
+﻿/*
  *     Copyright (C) 2026 ghhn
  *
  *     Ritmoo is free software: you can redistribute it and/or modify
@@ -137,24 +137,6 @@ class SettingsPage extends StatelessWidget {
               trailing: Switch(
                 value: value,
                 onChanged: (value) => _togglePredictiveBack(context, value),
-              ),
-            );
-          },
-        ),
-        ValueListenableBuilder<bool>(
-          valueListenable: useProxy,
-          builder: (_, value, __) {
-            return CustomBar(
-              context.l10n!.useProxy,
-              FluentIcons.shield_24_regular,
-              description: context.l10n!.useProxyDescription,
-              trailing: Switch(
-                value: value,
-                onChanged: (value) {
-                  useProxy.value = value;
-                  addOrUpdateData('settings', 'useProxy', value);
-                  showToast(context, context.l10n!.settingChangedMsg);
-                },
               ),
             );
           },

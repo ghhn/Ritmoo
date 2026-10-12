@@ -1,4 +1,4 @@
-/*
+﻿/*
  *     Copyright (C) 2026 ghhn
  *
  *     Ritmoo is free software: you can redistribute it and/or modify
@@ -60,9 +60,8 @@ final externalRecommendations = ValueNotifier<bool>(
   Hive.box('settings').get('externalRecommendations', defaultValue: false),
 );
 
-final useProxy = ValueNotifier<bool>(
-  Hive.box('settings').get('useProxy', defaultValue: false),
-);
+// Proxy is permanently disabled for fast direct streaming
+final useProxy = ValueNotifier<bool>(false);
 
 final audioQualitySetting = ValueNotifier<String>(
   Hive.box('settings').get('audioQuality', defaultValue: 'high'),

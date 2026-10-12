@@ -1,4 +1,4 @@
-/*
+﻿/*
  *     Copyright (C) 2026 ghhn
  *
  *     Ritmoo is free software: you can redistribute it and/or modify
@@ -64,104 +64,46 @@ final recentlyPlayedVersion = ValueNotifier<int>(0);
 final lyrics = ValueNotifier<String?>(null);
 String? lastFetchedLyrics;
 
-// Timeouts and durations used across manifest fetching and cache validation.
-const Duration _manifestTimeout = Duration(seconds: 12);
-const Duration _perClientTimeout = Duration(seconds: 8);
+// Fast timeout for direct stream manifest fetching.
+const Duration _manifestTimeout = Duration(seconds: 6);
 const Duration _cacheValidationDuration = Duration(hours: 1);
 
-// Ordered fallback clients to try when the primary list fails.
-final _fallbackClients = [
-  YoutubeApiClient.androidVr,
-  YoutubeApiClient.tv,
-  YoutubeApiClient.ios,
-  YoutubeApiClient.mweb,
-  YoutubeApiClient.androidMusic,
-  YoutubeApiClient.androidSdkless,
-];
-
-/// Fetches a stream manifest for a song, honoring proxy settings.
-/// Tries the configured client list first, then falls back to individual
-/// clients one by one to maximize success rate.
+/// Fetches a stream manifest directly and rapidly for a song.
+/// Tries fast direct extraction first, then standard watch page extraction,
+/// and finally TV client fallback. Completely bypasses proxy for maximum speed.
 Future<StreamManifest?> _fetchStreamManifest(String songId) async {
-  // If user explicitly enabled useProxy, try proxy first with graceful fallback to direct
-  if (useProxy.value) {
-    try {
-      final proxyManifest = await ProxyManager()
-          .getSongManifest(songId)
-          .timeout(_manifestTimeout);
-      if (proxyManifest != null && proxyManifest.audioOnly.isNotEmpty) {
-        return proxyManifest;
-      }
-    } catch (e) {
-      logger.log('Proxy manifest fetch failed for $songId, falling back to direct: $e');
-    }
-  }
-
-  // 1. Fast direct attempt: bypasses scraping the web watch page
+  // 1. Fast direct attempt: androidSdkless / androidVr bypasses watch page scraping (200-800ms)
   try {
     final result = await ytClient.videos.streams
         .getManifest(songId, ytClients: customClients, requireWatchPage: false)
         .timeout(_manifestTimeout);
-    // Validate that the manifest actually contains audio streams
     if (result.audioOnly.isNotEmpty) return result;
-    logger.log('Fast direct attempt returned empty audio streams for $songId, continuing...');
   } catch (e) {
-    logger.log('Fast direct client list failed for $songId, trying standard: $e');
+    logger.log('Fast direct attempt failed for $songId: $e');
   }
 
-  // 2. Standard direct attempt: with watch page if deciphering is needed
+  // 2. Standard direct attempt: with watch page if deciphering is needed (~1.5-2.5s)
   try {
     final result = await ytClient.videos.streams
         .getManifest(songId, ytClients: customClients)
         .timeout(_manifestTimeout);
-    // Validate that the manifest actually contains audio streams
     if (result.audioOnly.isNotEmpty) return result;
-    logger.log('Primary attempt returned empty audio streams for $songId, trying fallbacks...');
   } catch (e) {
-    logger.log('Primary client list failed for $songId, trying fallbacks: $e');
+    logger.log('Standard direct attempt failed for $songId: $e');
   }
 
-  // 3. Fallback direct clients: try each client individually
-  for (final client in _fallbackClients) {
-    try {
-      final result = await ytClient.videos.streams
-          .getManifest(songId, ytClients: [client], requireWatchPage: false)
-          .timeout(_perClientTimeout);
-      if (result.audioOnly.isNotEmpty) {
-        logger.log('Fallback client succeeded for $songId');
-        return result;
-      }
-    } catch (_) {
-      try {
-        final resultWithWatchPage = await ytClient.videos.streams
-            .getManifest(songId, ytClients: [client])
-            .timeout(_perClientTimeout);
-        if (resultWithWatchPage.audioOnly.isNotEmpty) {
-          logger.log('Fallback client with watch page succeeded for $songId');
-          return resultWithWatchPage;
-        }
-      } catch (e) {
-        logger.log('Fallback client failed for $songId: $e');
-      }
-    }
-  }
-
-  // 4. Automatic transparent proxy fallback if direct connections failed:
-  // Allows videos/songs to load even under ISP or regional restrictions
-  // without the user needing to manually activate proxy in settings.
-  if (!useProxy.value) {
-    logger.log('All direct attempts failed for $songId. Automatically falling back to proxy...');
-    try {
-      final proxyManifest = await ProxyManager()
-          .getSongManifest(songId, forceProxy: true)
-          .timeout(_manifestTimeout);
-      if (proxyManifest != null && proxyManifest.audioOnly.isNotEmpty) {
-        logger.log('Automatic proxy fallback succeeded for $songId');
-        return proxyManifest;
-      }
-    } catch (e) {
-      logger.log('Automatic proxy fallback failed for $songId: $e');
-    }
+  // 3. Fallback client: TV / iOS client (reliable on restricted music videos)
+  try {
+    final result = await ytClient.videos.streams
+        .getManifest(
+          songId,
+          ytClients: [YoutubeApiClient.tv, YoutubeApiClient.ios],
+          requireWatchPage: false,
+        )
+        .timeout(_manifestTimeout);
+    if (result.audioOnly.isNotEmpty) return result;
+  } catch (e) {
+    logger.log('Fallback TV/iOS attempt failed for $songId: $e');
   }
 
   return null;
@@ -217,23 +159,7 @@ Future<bool> _validateCachedUrl(String cachedUrl) async {
   }
 }
 
-Future<bool> _validateStreamUrl(String streamUrl) async {
-  try {
-    final response = await http.head(
-      Uri.parse(streamUrl),
-      headers: {
-        'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
-        'Referer': 'https://www.youtube.com/',
-      },
-    ).timeout(const Duration(seconds: 6));
 
-    return response.statusCode >= 200 && response.statusCode < 300 ||
-        response.statusCode == 403;
-  } catch (_) {
-    return false;
-  }
-}
 
 Future<List> fetchSongsList(String searchQuery) async {
   try {
@@ -459,7 +385,7 @@ Future<List<String>> getSearchSuggestions(String query) async {
 
 Future<List<Map<String, int>>> getSkipSegments(String id) async {
   try {
-    final res = await ProxyManager().getProxiedResponse(
+    final res = await http.get(
       Uri(
         scheme: 'https',
         host: 'sponsor.ajay.app',
@@ -602,23 +528,6 @@ Future<String?> fetchSongStreamUrl(String songId, bool isLive) async {
     if (audioStreams == null || audioStreams.isEmpty) {
       logger.log('fetchSongStreamUrl: no audio streams for $songId');
       return null;
-    }
-
-    final streamCandidates = List<AudioOnlyStreamInfo>.from(
-      audioStreams.sortByBitrate(),
-    )..sort((a, b) => b.bitrate.compareTo(a.bitrate));
-
-    for (final stream in streamCandidates) {
-      final url = stream.url.toString();
-      if (url.isEmpty) continue;
-
-      final urlIsValid = await _validateStreamUrl(url);
-      if (urlIsValid) {
-        unawaited(addOrUpdateData('cache', cacheKey, url));
-        return url;
-      }
-
-      logger.log('Skipping non-playable stream candidate for $songId: $url');
     }
 
     final selectedStream = selectAudioOnlyStreamForQuality(
@@ -840,7 +749,7 @@ Future<bool> removeSongFromOffline(dynamic songId) async {
 
 Future<File?> _downloadAndSaveArtworkFile(String url, String filePath) async {
   try {
-    final response = await ProxyManager().getProxiedResponse(Uri.parse(url));
+    final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 8));
 
     if (response.statusCode == 200) {
       final file = File(filePath);
