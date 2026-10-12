@@ -1,5 +1,5 @@
 /*
- *     Copyright (C) 2026 Valeri Gokadze
+ *     Copyright (C) 2026 ghhn
  *
  *     Ritmoo is free software: you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *
  *
  *     For more information about Ritmoo, including how to contribute,
- *     please visit: https://github.com/gokadzev/Ritmoo
+ *     please visit: https://github.com/ghhn/Ritmoo
  */
 
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
@@ -32,7 +32,6 @@ import 'package:ritmoo/services/data_manager.dart';
 import 'package:ritmoo/services/playlist_download_service.dart';
 import 'package:ritmoo/services/router_service.dart';
 import 'package:ritmoo/services/settings_manager.dart';
-import 'package:ritmoo/services/update_manager.dart';
 import 'package:ritmoo/theme/app_colors.dart';
 import 'package:ritmoo/theme/app_themes.dart';
 import 'package:ritmoo/utilities/flutter_bottom_sheet.dart';
@@ -167,6 +166,7 @@ class SettingsPage extends StatelessWidget {
               context.l10n!.offlineMode,
               FluentIcons.cloud_off_24_regular,
               description: context.l10n!.offlineModeDescription,
+              borderRadius: commonCustomBarRadiusLast,
               trailing: Switch(
                 value: value,
                 onChanged: (value) => _toggleOfflineMode(context, value),
@@ -174,23 +174,6 @@ class SettingsPage extends StatelessWidget {
             );
           },
         ),
-        if (!isFdroidBuild)
-          ValueListenableBuilder<bool?>(
-            valueListenable: shouldWeCheckUpdates,
-            builder: (_, value, __) {
-              return CustomBar(
-                context.l10n!.automaticUpdateChecks,
-                FluentIcons.arrow_sync_24_regular,
-                description: context.l10n!.automaticUpdateChecksDescription,
-                borderRadius: commonCustomBarRadiusLast,
-                trailing: Switch(
-                  value: value ?? false,
-                  onChanged: (value) =>
-                      _toggleAutomaticUpdateChecks(context, value),
-                ),
-              );
-            },
-          ),
       ],
     );
   }
@@ -327,6 +310,7 @@ class SettingsPage extends StatelessWidget {
         CustomBar(
           context.l10n!.restoreUserData,
           FluentIcons.cloud_add_24_regular,
+          borderRadius: commonCustomBarRadiusLast,
           onTap: () async {
             try {
               final result = await restoreData(context);
@@ -351,13 +335,6 @@ class SettingsPage extends StatelessWidget {
             }
           },
         ),
-        if (!isFdroidBuild)
-          CustomBar(
-            context.l10n!.downloadAppUpdate,
-            FluentIcons.arrow_download_24_regular,
-            borderRadius: commonCustomBarRadiusLast,
-            onTap: checkAppUpdates,
-          ),
       ],
     );
   }
@@ -389,7 +366,7 @@ class SettingsPage extends StatelessWidget {
                 child: InkWell(
                   borderRadius: BorderRadius.circular(15),
                   onTap: () =>
-                      launchURL(Uri.parse('https://ko-fi.com/gokadzev')),
+                      launchURL(Uri.parse('https://ko-fi.com/ghhn')),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
                       vertical: 12,
@@ -701,11 +678,6 @@ class SettingsPage extends StatelessWidget {
     showToast(context, context.l10n!.settingChangedMsg);
   }
 
-  void _toggleAutomaticUpdateChecks(BuildContext context, bool value) {
-    addOrUpdateData('settings', 'shouldWeCheckUpdates', value);
-    shouldWeCheckUpdates.value = value;
-    showToast(context, context.l10n!.settingChangedMsg);
-  }
 
   void _toggleExternalRecommendations(BuildContext context, bool value) {
     addOrUpdateData('settings', 'externalRecommendations', value);

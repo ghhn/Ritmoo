@@ -1,5 +1,5 @@
 /*
- *     Copyright (C) 2026 Valeri Gokadze
+ *     Copyright (C) 2026 ghhn
  *
  *     Ritmoo is free software: you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *
  *
  *     For more information about Ritmoo, including how to contribute,
- *     please visit: https://github.com/gokadzev/Ritmoo
+ *     please visit: https://github.com/ghhn/Ritmoo
  */
 
 import 'dart:async';
@@ -36,16 +36,25 @@ import 'package:ritmoo/utilities/mediaitem.dart';
 import 'package:ritmoo/utilities/queue_entry_utils.dart';
 import 'package:rxdart/rxdart.dart';
 
+typedef RadioReplenisher = Future<List<Map>> Function({
+  Map? seedSong,
+  Map? seedPlaylist,
+  String? seedArtist,
+  int limit,
+  Set<String>? excludedYtIds,
+});
+
 class RitmooAudioHandler extends BaseAudioHandler {
   RitmooAudioHandler() {
-    _androidEqualizer = AndroidEqualizer();
     audioPlayer = AudioPlayer(
-      audioPipeline: AudioPipeline(androidAudioEffects: [_androidEqualizer]),
+      userAgent:
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
       audioLoadConfiguration: const AudioLoadConfiguration(
         androidLoadControl: AndroidLoadControl(
+          minBufferDuration: Duration(seconds: 15),
           maxBufferDuration: Duration(seconds: 60),
           bufferForPlaybackDuration: Duration(milliseconds: 500),
-          bufferForPlaybackAfterRebufferDuration: Duration(seconds: 3),
+          bufferForPlaybackAfterRebufferDuration: Duration(seconds: 1),
         ),
       ),
     );
@@ -63,11 +72,7 @@ class RitmooAudioHandler extends BaseAudioHandler {
     _initialize();
   }
 
-  late final AndroidEqualizer _androidEqualizer;
   late final AudioPlayer audioPlayer;
-  bool _equalizerInitialized = false;
-  Future<bool>? _equalizerInitFuture;
-  DateTime _equalizerRetryNotBefore = DateTime.fromMillisecondsSinceEpoch(0);
 
   Timer? _sleepTimer;
   Timer? _debounceTimer;
@@ -86,6 +91,15 @@ class RitmooAudioHandler extends BaseAudioHandler {
   int _songTransitionCounter = 0;
   bool _completionEventPending = false;
   bool _completionHandlerLoadStarted = false;
+
+  bool _isRadio = false;
+  Map? _radioSeedSong;
+  String? _radioSeedArtist;
+  Map? _radioSeedPlaylist;
+  bool _isReplenishingRadio = false;
+
+  bool get isRadio => _isRadio;
+  RadioReplenisher? radioReplenisher;
 
   String? _lastError;
   int _consecutiveErrors = 0;
@@ -107,8 +121,12 @@ class RitmooAudioHandler extends BaseAudioHandler {
         audioPlayer.positionStream,
         audioPlayer.bufferedPositionStream,
         audioPlayer.durationStream,
-        (position, bufferedPosition, duration) =>
-            PositionData(position, bufferedPosition, duration ?? Duration.zero),
+        (position, bufferedPosition, duration) {
+          final totalDuration = duration ??
+              mediaItem.valueOrNull?.duration ??
+              Duration.zero;
+          return PositionData(position, bufferedPosition, totalDuration);
+        },
       ).distinct((prev, curr) {
         const threshold = Duration(milliseconds: 500);
         return (prev.position - curr.position).abs() < threshold &&
@@ -158,6 +176,8 @@ class RitmooAudioHandler extends BaseAudioHandler {
               error: error,
               stackTrace: stackTrace,
             );
+            _lastError = error.toString();
+            Future.microtask(_handlePlaybackError);
           },
         );
 
@@ -308,8 +328,6 @@ class RitmooAudioHandler extends BaseAudioHandler {
       // Apply stored shuffle mode to audio player
       await audioPlayer.setShuffleModeEnabled(shuffleNotifier.value);
 
-      // Initialize equalizer once at startup
-      unawaited(_ensureEqualizerConfigured());
     } catch (e, stackTrace) {
       logger.log(
         'Error initializing audio session',
@@ -319,142 +337,29 @@ class RitmooAudioHandler extends BaseAudioHandler {
     }
   }
 
-  Future<bool> _ensureEqualizerConfigured({bool force = false}) async {
-    if (_equalizerInitialized) return true;
-
-    final now = DateTime.now();
-    if (!force && now.isBefore(_equalizerRetryNotBefore)) {
-      return false;
-    }
-
-    if (!force && audioPlayer.audioSource == null) {
-      return false;
-    }
-
-    final inFlight = _equalizerInitFuture;
-    if (inFlight != null) {
-      return inFlight;
-    }
-
-    _equalizerInitFuture = _configureEqualizer();
-    try {
-      return await _equalizerInitFuture!;
-    } finally {
-      _equalizerInitFuture = null;
-    }
-  }
-
-  Future<bool> _configureEqualizer() async {
-    try {
-      final params = await _androidEqualizer.parameters.timeout(
-        const Duration(seconds: 3),
-      );
-
-      final savedGains = equalizerBandGains.value;
-      if (savedGains.isNotEmpty) {
-        for (var i = 0; i < params.bands.length && i < savedGains.length; i++) {
-          final clamped = savedGains[i].clamp(
-            params.minDecibels,
-            params.maxDecibels,
-          );
-          await params.bands[i].setGain(clamped);
-        }
-      }
-
-      await _androidEqualizer.setEnabled(equalizerEnabled.value);
-      _equalizerInitialized = true;
-      _equalizerRetryNotBefore = DateTime.fromMillisecondsSinceEpoch(0);
-      return true;
-    } catch (e, stackTrace) {
-      _equalizerRetryNotBefore = DateTime.now().add(
-        const Duration(seconds: 10),
-      );
-      logger.log(
-        'Equalizer initialization deferred',
-        error: e,
-        stackTrace: stackTrace,
-      );
-      return false;
-    }
-  }
 
   Future<AndroidEqualizerParameters?> getEqualizerParameters() async {
-    final initialized = await _ensureEqualizerConfigured();
-    if (!initialized) return null;
-    try {
-      return await _androidEqualizer.parameters.timeout(
-        const Duration(seconds: 2),
-      );
-    } catch (e, stackTrace) {
-      logger.log(
-        'Failed to get equalizer parameters',
-        error: e,
-        stackTrace: stackTrace,
-      );
-      return null;
-    }
+    return null;
   }
 
   Future<void> setEqualizerEnabled(bool enabled) async {
-    final initialized = await _ensureEqualizerConfigured(force: true);
-    if (!initialized) return;
-    try {
-      await _androidEqualizer.setEnabled(enabled);
-      equalizerEnabled.value = enabled;
-      unawaited(addOrUpdateData('settings', 'equalizerEnabled', enabled));
-    } catch (e, stackTrace) {
-      logger.log(
-        'Failed to set equalizer enabled state',
-        error: e,
-        stackTrace: stackTrace,
-      );
-    }
+    equalizerEnabled.value = enabled;
+    unawaited(addOrUpdateData('settings', 'equalizerEnabled', enabled));
   }
 
   Future<void> setEqualizerBandGain(int index, double gain) async {
-    final initialized = await _ensureEqualizerConfigured(force: true);
-    if (!initialized) return;
-
-    try {
-      final params = await _androidEqualizer.parameters;
-      if (index < 0 || index >= params.bands.length) {
-        return;
-      }
-
-      final clamped = gain.clamp(params.minDecibels, params.maxDecibels);
-      await params.bands[index].setGain(clamped);
-
-      final gains = params.bands.map((band) => band.gain).toList();
+    final gains = List<double>.from(equalizerBandGains.value);
+    if (index >= 0 && index < gains.length) {
+      gains[index] = gain;
       equalizerBandGains.value = gains;
       unawaited(addOrUpdateData('settings', 'equalizerBandGains', gains));
-    } catch (e, stackTrace) {
-      logger.log(
-        'Failed to set equalizer band gain',
-        error: e,
-        stackTrace: stackTrace,
-      );
     }
   }
 
   Future<void> resetEqualizerBands() async {
-    final initialized = await _ensureEqualizerConfigured(force: true);
-    if (!initialized) return;
-
-    try {
-      final params = await _androidEqualizer.parameters;
-      for (final band in params.bands) {
-        await band.setGain(0);
-      }
-      final gains = List<double>.filled(params.bands.length, 0);
-      equalizerBandGains.value = gains;
-      unawaited(addOrUpdateData('settings', 'equalizerBandGains', gains));
-    } catch (e, stackTrace) {
-      logger.log(
-        'Failed to reset equalizer bands',
-        error: e,
-        stackTrace: stackTrace,
-      );
-    }
+    final gains = List<double>.filled(equalizerBandGains.value.length, 0);
+    equalizerBandGains.value = gains;
+    unawaited(addOrUpdateData('settings', 'equalizerBandGains', gains));
   }
 
   bool _hasSignificantPositionChange(
@@ -576,7 +481,8 @@ class RitmooAudioHandler extends BaseAudioHandler {
       hasNext ||
       (repeatNotifier.value == AudioServiceRepeatMode.all &&
           _queueList.isNotEmpty) ||
-      playNextSongAutomatically.value;
+      playNextSongAutomatically.value ||
+      _isRadio;
 
   void _handlePlaybackError() {
     _consecutiveErrors++;
@@ -619,53 +525,68 @@ class RitmooAudioHandler extends BaseAudioHandler {
     }
   }
 
-  Future<void> _backgroundAddSongsToQueue() async {
-    // Fire and forget - this runs as a background task without blocking playback
-    if (offlineMode.value) return;
+  Future<void> _replenishRadioQueue() async {
+    if (_isReplenishingRadio || offlineMode.value) return;
+    _isReplenishingRadio = true;
 
-    // Use microtask to avoid blocking the current operation
-    unawaited(
-      Future.microtask(() async {
-        try {
-          // Only add songs if we're still playing
-          if (!audioPlayer.playing) {
-            return;
-          }
+    try {
+      final excludedYtIds = _queueList
+          .map((s) => s['ytid']?.toString())
+          .where((id) => id != null && id.isNotEmpty)
+          .cast<String>()
+          .toSet();
 
-          final baseSong = _getCurrentSongForRecommendations();
-          if (baseSong == null) {
-            return;
-          }
+      var moreSongs = <Map>[];
 
-          // Fetch similar songs silently in the background
-          await getSimilarSong(baseSong['ytid']).timeout(
-            const Duration(seconds: 10),
-            onTimeout: () {
-              logger.log('Background song fetch timed out');
-            },
+      final currentPlayingSong = _currentQueueIndex >= 0 &&
+              _currentQueueIndex < _queueList.length
+          ? _queueList[_currentQueueIndex]
+          : null;
+
+      if (radioReplenisher != null) {
+        moreSongs = await radioReplenisher!(
+          seedSong: _radioSeedSong ?? currentPlayingSong,
+          seedArtist: _radioSeedArtist ??
+              currentPlayingSong?['artist']?.toString(),
+          seedPlaylist: _radioSeedPlaylist,
+          limit: 8,
+          excludedYtIds: excludedYtIds,
+        );
+      }
+
+      if (moreSongs.isEmpty) {
+        final baseSong = _getCurrentSongForRecommendations();
+        if (baseSong != null && baseSong['ytid'] != null) {
+          await getSimilarSong(baseSong['ytid'].toString()).timeout(
+            const Duration(seconds: 8),
+            onTimeout: () {},
           );
-
-          // If we got a recommendation, add it to the queue
-          // But only if still playing (user might have paused during fetch)
-          if (!audioPlayer.playing) {
-            return;
-          }
-
           if (nextRecommendedSong != null) {
             final songToAdd = nextRecommendedSong;
             nextRecommendedSong = null;
-            await addToQueue(songToAdd);
-            logger.log('Background song added: "${songToAdd['title']}"');
+            if (songToAdd != null &&
+                !excludedYtIds.contains(songToAdd['ytid']?.toString())) {
+              moreSongs.add(songToAdd);
+            }
           }
-        } catch (e, stackTrace) {
-          logger.log(
-            'Error in background song addition',
-            error: e,
-            stackTrace: stackTrace,
-          );
         }
-      }),
-    );
+      }
+
+      if (moreSongs.isNotEmpty) {
+        for (final song in moreSongs) {
+          final ytid = song['ytid']?.toString();
+          if (ytid != null && ytid.isNotEmpty && excludedYtIds.add(ytid)) {
+            _queueList.add(_queueEntryIds.createSong(song));
+          }
+        }
+        _updateQueueMediaItems();
+        logger.log('Queue replenished with ${moreSongs.length} songs');
+      }
+    } catch (e, st) {
+      logger.log('Error replenishing radio queue', error: e, stackTrace: st);
+    } finally {
+      _isReplenishingRadio = false;
+    }
   }
 
   Map? _getCurrentSongForRecommendations() {
@@ -772,6 +693,7 @@ class RitmooAudioHandler extends BaseAudioHandler {
     List<Map> songs, {
     bool replace = false,
     int? startIndex,
+    bool preserveShuffle = false,
   }) async {
     try {
       final manuallyAddedSongs = replace ? _getUnplayedManualSongs() : <Map>[];
@@ -782,9 +704,9 @@ class RitmooAudioHandler extends BaseAudioHandler {
         _currentLoadingIndex = -1;
         _currentLoadingTransitionId = -1;
         _resetPreloadingState();
-        // Reset shuffle mode when replacing the queue.
+        // Reset shuffle mode when replacing the queue unless preserveShuffle is explicitly requested.
         // Notify listeners so the UI shuffle button updates immediately.
-        if (shuffleNotifier.value) {
+        if (shuffleNotifier.value && !preserveShuffle) {
           shuffleNotifier.value = false;
           unawaited(Hive.box('settings').put('shuffleEnabled', false));
           await audioPlayer.setShuffleModeEnabled(false);
@@ -1063,9 +985,9 @@ class RitmooAudioHandler extends BaseAudioHandler {
         if (success) {
           _consecutiveErrors = 0;
           _preloadUpcomingSongs();
-          // Trigger background song addition if auto-play is enabled
-          if (playNextSongAutomatically.value) {
-            unawaited(_backgroundAddSongsToQueue());
+          final remaining = _queueList.length - _currentQueueIndex - 1;
+          if ((_isRadio || playNextSongAutomatically.value) && remaining <= 3) {
+            unawaited(_replenishRadioQueue());
           }
         } else {
           _currentQueueIndex = previousQueueIndex;
@@ -1183,7 +1105,12 @@ class RitmooAudioHandler extends BaseAudioHandler {
       ? _queueList[_currentQueueIndex]
       : null;
 
-  bool get hasNext => _currentQueueIndex < _queueList.length - 1;
+  bool get hasNext =>
+      (_currentQueueIndex < _queueList.length - 1) ||
+      _isRadio ||
+      (repeatNotifier.value == AudioServiceRepeatMode.all &&
+          _queueList.isNotEmpty) ||
+      playNextSongAutomatically.value;
 
   bool get hasPrevious => _currentQueueIndex > 0 || _historyList.isNotEmpty;
 
@@ -1318,6 +1245,22 @@ class RitmooAudioHandler extends BaseAudioHandler {
       if (songData['ytid'] == null || songData['ytid'].toString().isEmpty) {
         logger.log('Invalid song data: missing ytid');
         return false;
+      }
+
+      if (transitionId == null) {
+        if (_queueList.isEmpty) {
+          _queueList.add(_queueEntryIds.createSong(songData));
+          _currentQueueIndex = 0;
+          _updateQueueMediaItems();
+        } else if (!_queueList.any((s) => s['ytid'] == songData['ytid'])) {
+          final insertIndex = (_currentQueueIndex + 1).clamp(0, _queueList.length);
+          _queueList.insert(
+            insertIndex,
+            _queueEntryIds.createSong(songData),
+          );
+          _currentQueueIndex = insertIndex;
+          _updateQueueMediaItems();
+        }
       }
 
       _lastError = null;
@@ -1622,6 +1565,19 @@ class RitmooAudioHandler extends BaseAudioHandler {
   }) async {
     try {
       if (playlist != null && playlist['list'] != null) {
+        final isRadio = playlist['isRadio'] == true;
+        if (isRadio) {
+          _isRadio = true;
+          _radioSeedSong = playlist['seedSong'] as Map?;
+          _radioSeedArtist = playlist['seedArtist'] as String?;
+          _radioSeedPlaylist = playlist['seedPlaylist'] as Map?;
+        } else {
+          _isRadio = false;
+          _radioSeedSong = null;
+          _radioSeedArtist = null;
+          _radioSeedPlaylist = null;
+        }
+
         await addPlaylistToQueue(
           List<Map>.from(playlist['list']),
           replace: true,
@@ -1646,7 +1602,15 @@ class RitmooAudioHandler extends BaseAudioHandler {
       }
 
       final uri = Uri.parse(songUrl);
-      final audioSource = AudioSource.uri(uri, tag: tag);
+      final audioSource = AudioSource.uri(
+        uri,
+        headers: const {
+          'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
+          'Referer': 'https://www.youtube.com/',
+        },
+        tag: tag,
+      );
 
       if (!sponsorBlockSupport.value) {
         return audioSource;
@@ -1750,10 +1714,12 @@ class RitmooAudioHandler extends BaseAudioHandler {
       } else if (repeatNotifier.value == AudioServiceRepeatMode.all &&
           _queueList.isNotEmpty) {
         await _playFromQueue(0);
-      } else if (playNextSongAutomatically.value &&
-          _currentLoadingIndex == -1) {
-        // At end of queue with auto-play enabled - trigger background fetch
-        unawaited(_backgroundAddSongsToQueue());
+      } else if (_isRadio || playNextSongAutomatically.value) {
+        // At end of queue in radio or auto-play mode - replenish and continue
+        await _replenishRadioQueue();
+        if (_currentQueueIndex < _queueList.length - 1) {
+          await _playFromQueue(_currentQueueIndex + 1);
+        }
       }
 
       _cleanupOldPreloadedSongs();

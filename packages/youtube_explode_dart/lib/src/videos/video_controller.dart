@@ -36,8 +36,10 @@ class VideoController {
         }
     };
     if (body['context']!['client']['clientName'] == 'IOS') {
-      body['context']!['client']!['visitorData'] =
-          await _extractVisitorData(httpClient, client);
+      final visitor = await _extractVisitorData(httpClient, client);
+      if (visitor != null) {
+        body['context']!['client']!['visitorData'] = visitor;
+      }
     }
 
     final content = await httpClient.postString(
@@ -63,25 +65,29 @@ class VideoController {
 
   String? _visitorData;
 
-  Future<String> _extractVisitorData(
+  Future<String?> _extractVisitorData(
       YoutubeHttpClient http, YoutubeApiClient client) async {
     if (_visitorData != null) {
-      return _visitorData!;
+      return _visitorData;
     }
 
-    var response =
-        await http.getString('https://www.youtube.com/sw.js_data', headers: {
-      'User-Agent': client.payload['context']['client']['userAgent']!,
-      'Content-Type': 'application/json',
-    });
+    try {
+      var response =
+          await http.getString('https://www.youtube.com/sw.js_data', headers: {
+        'User-Agent': client.payload['context']['client']['userAgent']!,
+        'Content-Type': 'application/json',
+      });
 
-    if (response.startsWith(")]}'")) {
-      response = response.substring(4);
+      if (response.startsWith(")]}'")) {
+        response = response.substring(4);
+      }
+
+      final data = json.decode(response) as List<dynamic>;
+      final value = data[0][2][0][0][13]?.toString();
+
+      return _visitorData = value;
+    } catch (_) {
+      return null;
     }
-
-    final data = json.decode(response) as List<dynamic>;
-    final value = data[0][2][0][0][13];
-
-    return _visitorData = value;
   }
 }

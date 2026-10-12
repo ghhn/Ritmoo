@@ -1,5 +1,5 @@
 /*
- *     Copyright (C) 2026 Valeri Gokadze
+ *     Copyright (C) 2026 ghhn
  *
  *     Ritmoo is free software: you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -15,8 +15,7 @@
  *     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  *
- *     For more information about Ritmoo, including how to contribute,
- *     please visit: https://github.com/gokadzev/Ritmoo
+ 
  */
 
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
@@ -27,10 +26,12 @@ class EmptyPlaylistState extends StatelessWidget {
     super.key,
     this.icon = FluentIcons.text_bullet_list_24_filled,
     required this.message,
+    this.action,
   });
 
   final IconData icon;
   final String message;
+  final Widget? action;
 
   @override
   Widget build(BuildContext context) {
@@ -56,6 +57,10 @@ class EmptyPlaylistState extends StatelessWidget {
                   fontSize: 16,
                 ),
               ),
+              if (action != null) ...[
+                const SizedBox(height: 20),
+                action!,
+              ],
             ],
           ),
         ),

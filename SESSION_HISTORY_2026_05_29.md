@@ -1,4 +1,4 @@
-# 📱 Historial de Chat - Sesión Flutter Musify
+# 📱 Historial de Chat - Sesión Flutter Ritmoo
 
 **Fecha:** 29 de Mayo de 2026  
 **Objetivo:** Compilar proyecto APK para ver la funcionalidad  
@@ -9,7 +9,7 @@
 ## 📋 Resumen de la Sesión
 
 ### Objetivo Principal
-Compilar el proyecto Flutter Musify a APK para probar la funcionalidad y revisar el diseño de la interfaz.
+Compilar el proyecto Flutter Ritmoo a APK para probar la funcionalidad y revisar el diseño de la interfaz.
 
 ---
 
@@ -276,7 +276,7 @@ flutter run -d emulator-5554
 
 ## 🔗 Enlaces Útiles
 
-- **Repositorio:** github.com/ghhn/apmusic
+- **Repositorio:** github.com/ghhn/Ritmoo
 - **Branch:** master
 - **APK Compilado:** `build/app/outputs/apk/fdroid/debug/app-fdroid-debug.apk`
 

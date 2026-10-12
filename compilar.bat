@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul
-title Compilador Ritmoo (Musify)
+title Compilador Ritmoo (Ritmoo)
 
 :: Configurar JAVA_HOME si no esta presente
 if "%JAVA_HOME%"=="" (
@@ -13,7 +13,7 @@ if "%JAVA_HOME%"=="" (
 :MENU
 cls
 echo =====================================================================
-echo                     COMPILADOR RITMOO / MUSIFY
+echo                     COMPILADOR RITMOO
 echo =====================================================================
 echo.
 echo   [1] Compilar AAB para Google Play (.aab) [RECOMENDADO PARA PLAY STORE]

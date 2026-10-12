@@ -1,5 +1,5 @@
 /*
- *     Copyright (C) 2026 Valeri Gokadze
+ *     Copyright (C) 2026 ghhn
  *
  *     Ritmoo is free software: you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *
  *
  *     For more information about Ritmoo, including how to contribute,
- *     please visit: https://github.com/gokadzev/Ritmoo
+ *     please visit: https://github.com/ghhn/Ritmoo
  */
 
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
@@ -220,7 +220,10 @@ class _HomePageState extends State<HomePage> {
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8),
           child: GestureDetector(
-            onTap: () => context.push('/home/playlist/${playlist['ytid']}'),
+            onTap: () => context.push(
+              '/home/playlist/${playlist['ytid']}',
+              extra: playlist,
+            ),
             child: PlaylistCube(playlist, size: height),
           ),
         );
@@ -236,8 +239,10 @@ class _HomePageState extends State<HomePage> {
     return CarouselView.weighted(
       flexWeights: const <int>[3, 2, 1],
       itemSnapping: true,
-      onTap: (index) =>
-          context.push('/home/playlist/${playlists[index]['ytid']}'),
+      onTap: (index) => context.push(
+        '/home/playlist/${playlists[index]['ytid']}',
+        extra: playlists[index],
+      ),
       children: List.generate(itemCount, (index) {
         return PlaylistCube(playlists[index], size: height * 2);
       }),

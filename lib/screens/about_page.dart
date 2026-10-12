@@ -1,5 +1,5 @@
 /*
- *     Copyright (C) 2026 Valeri Gokadze
+ *     Copyright (C) 2026 ghhn
  *
  *     Ritmoo is free software: you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *
  *
  *     For more information about Ritmoo, including how to contribute,
- *     please visit: https://github.com/gokadzev/Ritmoo
+ *     please visit: https://github.com/ghhn/Ritmoo
  */
 
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
@@ -113,7 +113,7 @@ class AboutPage extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Valeri Gokadze',
+                            'ghhn',
                             style: TextStyle(
                               color: Theme.of(context).colorScheme.onSurface,
                               fontWeight: FontWeight.w600,
@@ -142,7 +142,7 @@ class AboutPage extends StatelessWidget {
                           icon: FluentIcons.code_24_filled,
                           tooltip: 'Github',
                           onPressed: () {
-                            launchURL(Uri.parse('https://github.com/gokadzev'));
+                            launchURL(Uri.parse('https://github.com/ghhn'));
                           },
                         ),
                         const SizedBox(width: 8),
@@ -150,7 +150,7 @@ class AboutPage extends StatelessWidget {
                           icon: FluentIcons.globe_24_filled,
                           tooltip: 'Website',
                           onPressed: () {
-                            launchURL(Uri.parse('https://gokadzev.github.io'));
+                            launchURL(Uri.parse('https://ghhn.github.io'));
                           },
                         ),
                       ],

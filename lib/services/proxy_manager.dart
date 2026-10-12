@@ -1,5 +1,5 @@
 /*
- *     Copyright (C) 2026 Valeri Gokadze
+ *     Copyright (C) 2026 ghhn
  *
  *     Ritmoo is free software: you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *
  *
  *     For more information about Ritmoo, including how to contribute,
- *     please visit: https://github.com/gokadzev/Ritmoo
+ *     please visit: https://github.com/ghhn/Ritmoo
  */
 
 import 'dart:async';
@@ -260,7 +260,11 @@ class ProxyManager {
   ) async {
     try {
       final manifest = await _defaultYt.videos.streams
-          .getManifest(songId, ytClients: customClients)
+          .getManifest(
+            songId,
+            ytClients: customClients,
+            requireWatchPage: false,
+          )
           .timeout(Duration(seconds: timeoutSeconds));
       return manifest;
     } catch (e) {
@@ -280,7 +284,11 @@ class ProxyManager {
       final res = _ensureProxyResources(proxy, timeoutSeconds: timeoutSeconds);
       ytClient = YoutubeExplode(httpClient: YoutubeHttpClient(res.ioClient));
       final manifest = await ytClient.videos.streams
-          .getManifest(songId, ytClients: customClients)
+          .getManifest(
+            songId,
+            ytClients: customClients,
+            requireWatchPage: false,
+          )
           .timeout(Duration(seconds: timeoutSeconds));
       _workingProxies.add(proxy);
       shouldCloseClient = true;

@@ -1,5 +1,5 @@
 # =====================================================================
-# Script PowerShell para Compilación de Ritmoo (Musify)
+# Script PowerShell para Compilación de Ritmoo (Ritmoo)
 # =====================================================================
 
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -17,7 +17,7 @@ if (-not $env:JAVA_HOME) {
 function Show-Menu {
     Clear-Host
     Write-Host "=====================================================================" -ForegroundColor Cyan
-    Write-Host "                 COMPILADOR RITMOO / MUSIFY (PowerShell)             " -ForegroundColor Green
+    Write-Host "                 COMPILADOR RITMOO (PowerShell)                       " -ForegroundColor Green
     Write-Host "=====================================================================" -ForegroundColor Cyan
     Write-Host ""
     Write-Host "  [1] Compilar AAB para Google Play (.aab) [RECOMENDADO PLAY STORE]" -ForegroundColor Yellow

@@ -1,5 +1,5 @@
 /*
- *     Copyright (C) 2026 Valeri Gokadze
+ *     Copyright (C) 2026 ghhn
  *
  *     Ritmoo is free software: you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *
  *
  *     For more information about Ritmoo, including how to contribute,
- *     please visit: https://github.com/gokadzev/Ritmoo
+ *     please visit: https://github.com/ghhn/Ritmoo
  */
 
 import 'dart:async';
@@ -75,6 +75,8 @@ class _PlaylistPageState extends State<PlaylistPage> {
   // Initialize with an empty list to avoid LateInitializationError if
   // _initializePlaylist() fails or completes after the widget is disposed.
   List<dynamic> _originalPlaylistList = [];
+  bool _isLoading = true;
+  bool _hasError = false;
 
   late final playlistLikeStatus = ValueNotifier<bool>(
     isPlaylistAlreadyLiked(widget.playlistId),
@@ -114,30 +116,75 @@ class _PlaylistPageState extends State<PlaylistPage> {
   }
 
   Future<void> _initializePlaylist() async {
+    if (!mounted) return;
+    setState(() {
+      _isLoading = true;
+      _hasError = false;
+    });
+
     try {
       final initialPlaylist = widget.playlistData;
       final resolvedId =
           initialPlaylist?['ytid']?.toString() ?? widget.playlistId;
 
+      // 1. Immediately use initialPlaylist if provided
       if (initialPlaylist != null) {
-        _playlist = initialPlaylist;
+        _playlist = initialPlaylist is Map ? Map.from(initialPlaylist) : initialPlaylist;
         final playlistList = _playlist?['list'] as List?;
-        if ((playlistList == null || playlistList.isEmpty) &&
-            resolvedId != null) {
-          _playlist =
-              await getPlaylistInfoForWidget(
-                resolvedId,
-                isArtist: widget.isArtist,
-              ) ??
-              initialPlaylist;
+        if (playlistList != null && playlistList.isNotEmpty) {
+          _originalPlaylistList = List<dynamic>.from(playlistList);
+          _sortPlaylist(_sortType);
+          _isLoading = false;
         }
-      } else {
-        _playlist = await getPlaylistInfoForWidget(
-          resolvedId,
-          isArtist: widget.isArtist,
-        );
+        if (mounted) setState(() {});
       }
 
+      // 2. Check local database and Hive cache first for instant display
+      if (resolvedId != null) {
+        if (_playlist == null) {
+          for (final p in playlists) {
+            if (p['ytid']?.toString() == resolvedId) {
+              _playlist = Map.from(p);
+              break;
+            }
+          }
+        }
+
+        final currentList = _playlist?['list'] as List?;
+        if (currentList == null || currentList.isEmpty) {
+          final cachedSongs = await getData('cache', 'playlistSongs$resolvedId') ??
+              await getData('cache', 'album_$resolvedId');
+          if (cachedSongs is List && cachedSongs.isNotEmpty) {
+            _playlist ??= {'ytid': resolvedId, 'list': cachedSongs};
+            _playlist['list'] = cachedSongs;
+            _originalPlaylistList = List<dynamic>.from(cachedSongs);
+            _sortPlaylist(_sortType);
+            _isLoading = false;
+            if (mounted) setState(() {});
+          }
+        }
+      }
+
+      // 3. Fetch missing data from network if needed
+      final currentList = _playlist?['list'] as List?;
+      if (_playlist == null || currentList == null || currentList.isEmpty) {
+        if (resolvedId != null) {
+          final fetched = await getPlaylistInfoForWidget(
+            resolvedId,
+            isArtist: widget.isArtist,
+          );
+          if (fetched != null) {
+            _playlist = fetched;
+            final fetchedList = _playlist?['list'] as List?;
+            if (fetchedList != null && fetchedList.isNotEmpty) {
+              _originalPlaylistList = List<dynamic>.from(fetchedList);
+              _sortPlaylist(_sortType);
+            }
+          }
+        }
+      }
+
+      // 4. Fallback search for album tracks if list is still empty and title exists
       if (_playlist != null &&
           (_playlist['list'] == null || (_playlist['list'] as List).isEmpty) &&
           _playlist['title'] != null) {
@@ -150,6 +197,13 @@ class _PlaylistPageState extends State<PlaylistPage> {
           );
           if (fallbackSongs.isNotEmpty) {
             _playlist['list'] = fallbackSongs;
+            _originalPlaylistList = List<dynamic>.from(fallbackSongs);
+            _sortPlaylist(_sortType);
+            if (resolvedId != null) {
+              unawaited(
+                addOrUpdateData('cache', 'album_$resolvedId', fallbackSongs),
+              );
+            }
           }
         }
       }
@@ -157,9 +211,6 @@ class _PlaylistPageState extends State<PlaylistPage> {
       if (_playlist != null && _playlist['list'] != null) {
         _originalPlaylistList = List<dynamic>.from(_playlist['list'] as List);
         _sortPlaylist(_sortType);
-        if (mounted) {
-          setState(() {});
-        }
       }
     } catch (e, stackTrace) {
       logger.log(
@@ -169,6 +220,13 @@ class _PlaylistPageState extends State<PlaylistPage> {
       );
       if (mounted) {
         showToast(context, context.l10n!.error);
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _hasError = _playlist == null;
+        });
       }
     }
   }
@@ -188,7 +246,7 @@ class _PlaylistPageState extends State<PlaylistPage> {
           ? CustomScrollView(
               slivers: [
                 SliverToBoxAdapter(child: _buildHeaderSection()),
-                if ((_playlist['list'] as List).isNotEmpty) ...[
+                if ((_playlist['list'] as List? ?? []).isNotEmpty) ...[
                   ValueListenableBuilder<String>(
                     valueListenable: _searchQueryNotifier,
                     builder: (context, searchQuery, _) {
@@ -210,14 +268,71 @@ class _PlaylistPageState extends State<PlaylistPage> {
                       );
                     },
                   ),
-                ] else
-                  EmptyPlaylistState(message: context.l10n!.noSongsInPlaylist),
+                ] else if (_isLoading)
+                  const SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Center(child: Spinner()),
+                  )
+                else
+                  EmptyPlaylistState(
+                    message: context.l10n!.noSongsInPlaylist,
+                    action: FilledButton.icon(
+                      onPressed: _initializePlaylist,
+                      icon: const Icon(FluentIcons.arrow_clockwise_24_regular),
+                      label: Text(
+                        Localizations.localeOf(context).languageCode == 'es'
+                            ? 'Reintentar'
+                            : 'Retry',
+                      ),
+                    ),
+                  ),
               ],
             )
-          : SizedBox(
-              height: MediaQuery.sizeOf(context).height - 100,
-              child: const Spinner(),
+          : _buildLoadingOrErrorState(context),
+    );
+  }
+
+  Widget _buildLoadingOrErrorState(BuildContext context) {
+    if (_isLoading && !_hasError) {
+      return SizedBox(
+        height: MediaQuery.sizeOf(context).height - 100,
+        child: const Spinner(),
+      );
+    }
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              FluentIcons.cloud_dismiss_24_regular,
+              size: 64,
+              color: Theme.of(context).colorScheme.error,
             ),
+            const SizedBox(height: 16),
+            Text(
+              context.l10n!.error,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface,
+                fontSize: 16,
+              ),
+            ),
+            const SizedBox(height: 24),
+            FilledButton.icon(
+              onPressed: _initializePlaylist,
+              icon: const Icon(FluentIcons.arrow_clockwise_24_regular),
+              label: Text(
+                Localizations.localeOf(context).languageCode == 'es'
+                    ? 'Reintentar'
+                    : 'Retry',
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -233,7 +348,7 @@ class _PlaylistPageState extends State<PlaylistPage> {
   }
 
   Widget _buildHeaderSection() {
-    final songsLength = _playlist['list'].length;
+    final songsLength = (_playlist['list'] as List?)?.length ?? 0;
     final isUserCreated = _playlist['source'] == 'user-created';
     final colorScheme = Theme.of(context).colorScheme;
 
@@ -288,6 +403,7 @@ class _PlaylistPageState extends State<PlaylistPage> {
                         shuffled,
                         replace: true,
                         startIndex: 0,
+                        preserveShuffle: true,
                       );
                     },
                   ),

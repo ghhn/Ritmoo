@@ -24,7 +24,7 @@ if (keystorePropertiesFile.exists()) {
 }
 
 android {
-    namespace = "com.gokadzev.ritmoo"
+    namespace = "com.ghhn.ritmoo"
     compileSdk = 36
     ndkVersion = "28.2.13676358"
 
@@ -47,7 +47,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.gokadzev.ritmoo"
+        applicationId = "com.ghhn.ritmoo"
         minSdk = 24
         targetSdk = 36
         versionCode = flutter.versionCode

@@ -1,5 +1,5 @@
 /*
- *     Copyright (C) 2026 Valeri Gokadze
+ *     Copyright (C) 2026 ghhn
  *
  *     Ritmoo is free software: you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *
  *
  *     For more information about Ritmoo, including how to contribute,
- *     please visit: https://github.com/gokadzev/Ritmoo
+ *     please visit: https://github.com/ghhn/Ritmoo
  */
 
 import 'package:audio_service/audio_service.dart';
@@ -29,7 +29,7 @@ import 'package:ritmoo/utilities/language_utils.dart';
 // Preferences
 
 final shouldWeCheckUpdates = ValueNotifier<bool?>(
-  Hive.box('settings').get('shouldWeCheckUpdates', defaultValue: null),
+  Hive.box('settings').get('shouldWeCheckUpdates', defaultValue: false),
 );
 
 final playNextSongAutomatically = ValueNotifier<bool>(

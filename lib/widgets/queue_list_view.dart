@@ -1,5 +1,5 @@
 /*
- *     Copyright (C) 2026 Valeri Gokadze
+ *     Copyright (C) 2026 ghhn
  *
  *     Ritmoo is free software: you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -16,12 +16,13 @@
  *
  *
  *     For more information about Ritmoo, including how to contribute,
- *     please visit: https://github.com/gokadzev/Ritmoo
+ *     please visit: https://github.com/ghhn/Ritmoo
  */
 
 import 'dart:async';
 import 'dart:io';
 
+import 'package:audio_service/audio_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:flutter/material.dart';
@@ -42,6 +43,7 @@ class QueueWidget extends StatefulWidget {
 class _QueueWidgetState extends State<QueueWidget> {
   List<Map> _queue = [];
   late StreamSubscription<List<Map>> _subscription;
+  late StreamSubscription<PlaybackState> _playbackSubscription;
   bool _isDismissing = false;
   bool _hasScrolledToInitial = false;
   final ScrollController _scrollController = ScrollController();
@@ -49,6 +51,7 @@ class _QueueWidgetState extends State<QueueWidget> {
   @override
   void initState() {
     super.initState();
+    _queue = List<Map>.from(audioHandler.currentQueue);
     _subscription = audioHandler.queueAsMapStream.listen((queue) {
       if (mounted && !_isDismissing) {
         setState(() {
@@ -60,6 +63,15 @@ class _QueueWidgetState extends State<QueueWidget> {
         }
       }
     });
+    _playbackSubscription = audioHandler.playbackStateStream.listen((_) {
+      if (mounted) {
+        setState(() {});
+      }
+    });
+    if (_queue.isNotEmpty && !_hasScrolledToInitial) {
+      _hasScrolledToInitial = true;
+      _scrollToCurrentSong();
+    }
   }
 
   void _scrollToCurrentSong() {
@@ -85,6 +97,7 @@ class _QueueWidgetState extends State<QueueWidget> {
   @override
   void dispose() {
     _subscription.cancel();
+    _playbackSubscription.cancel();
     _scrollController.dispose();
     super.dispose();
   }

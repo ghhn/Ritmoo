@@ -1,5 +1,5 @@
 /*
- *     Copyright (C) 2026 Valeri Gokadze
+ *     Copyright (C) 2026 ghhn
  *
  *     Ritmoo is free software: you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *
  *
  *     For more information about Ritmoo, including how to contribute,
- *     please visit: https://github.com/gokadzev/Ritmoo
+ *     please visit: https://github.com/ghhn/Ritmoo
  */
 
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
@@ -67,10 +67,20 @@ Map<String, dynamic> returnSongLayout(
   Video song, {
   String? playlistImage,
 }) {
-  // Split only on the first ' - ' so dashes inside the title are preserved.
   final sep = song.title.indexOf(' - ');
-  final artist = sep != -1 ? song.title.substring(0, sep) : song.title;
-  final rawTitle = sep != -1 ? song.title.substring(sep + 3) : song.title;
+  String artist;
+  String rawTitle;
+  if (sep != -1) {
+    artist = song.title.substring(0, sep).trim();
+    rawTitle = song.title.substring(sep + 3).trim();
+  } else {
+    rawTitle = song.title.trim();
+    final cleanAuthor = song.author
+        .replaceAll(RegExp(r'\s*-\s*Topic$', caseSensitive: false), '')
+        .replaceAll(RegExp(r'VEVO$', caseSensitive: false), '')
+        .trim();
+    artist = cleanAuthor.isNotEmpty ? cleanAuthor : song.title.trim();
+  }
 
   return {
     'id': index,

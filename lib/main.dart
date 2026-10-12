@@ -1,5 +1,5 @@
 /*
- *     Copyright (C) 2026 Valeri Gokadze
+ *     Copyright (C) 2026 ghhn
  *
  *     Ritmoo is free software: you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  *
  *
  *     For more information about Ritmoo, including how to contribute,
- *     please visit: https://github.com/gokadzev/Ritmoo
+ *     please visit: https://github.com/ghhn/Ritmoo
  */
 
 import 'dart:async';
@@ -26,10 +26,12 @@ import 'package:audio_service/audio_service.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:receive_sharing_intent/receive_sharing_intent.dart';
+
 import 'package:ritmoo/extensions/l10n.dart';
 import 'package:ritmoo/localization/app_localizations.dart';
 import 'package:ritmoo/services/audio_service.dart';
@@ -40,14 +42,11 @@ import 'package:ritmoo/services/playlist_sharing.dart';
 import 'package:ritmoo/services/playlists_manager.dart';
 import 'package:ritmoo/services/router_service.dart';
 import 'package:ritmoo/services/settings_manager.dart';
-import 'package:ritmoo/services/update_manager.dart';
 import 'package:ritmoo/theme/app_themes.dart';
 import 'package:ritmoo/utilities/flutter_toast.dart';
 import 'package:ritmoo/utilities/language_utils.dart';
 import 'package:ritmoo/utilities/playlist_utils.dart';
 import 'package:ritmoo/utilities/sharing_intent.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 
 late RitmooAudioHandler audioHandler;
 late StreamSubscription<String?> sharingIntentSubscription;
@@ -56,7 +55,6 @@ final logger = Logger();
 final appLinks = AppLinks();
 
 bool isFdroidBuild = false;
-bool isUpdateChecked = false;
 
 class Ritmoo extends StatefulWidget {
   const Ritmoo({super.key});
@@ -159,31 +157,6 @@ class _RitmooState extends State<Ritmoo> {
       );
     }
 
-    if (!isFdroidBuild) {
-      if (shouldWeCheckUpdates.value == true) {
-        if (!isUpdateChecked && kReleaseMode) {
-          SchedulerBinding.instance.addPostFrameCallback((_) {
-            if (!offlineMode.value) {
-              checkAppUpdates();
-            }
-            isUpdateChecked = true;
-          });
-        }
-      } else {
-        if (shouldWeCheckUpdates.value == null) {
-          // show dialog that asks user if they want to enable update checks
-          SchedulerBinding.instance.addPostFrameCallback((_) {
-            showUpdateCheckDialog(NavigationManager().context);
-          });
-        } else {
-          SchedulerBinding.instance.addPostFrameCallback((_) async {
-            if (!offlineMode.value) {
-              await fetchAnnouncementOnly();
-            }
-          });
-        }
-      }
-    }
   }
 
   @override
@@ -266,13 +239,15 @@ Future<void> initialisation() async {
     audioHandler = await AudioService.init(
       builder: RitmooAudioHandler.new,
       config: const AudioServiceConfig(
-        androidNotificationChannelId: 'com.gokadzev.ritmoo',
+        androidNotificationChannelId: 'com.ghhn.ritmoo',
         androidNotificationChannelName: 'Ritmoo',
         androidNotificationIcon: 'drawable/ic_launcher_foreground',
         androidShowNotificationBadge: true,
         androidStopForegroundOnPause: false,
       ),
     );
+
+    audioHandler.radioReplenisher = getInfiniteRelatedSongsFromAlbums;
 
     // Init router
     NavigationManager.instance;
@@ -289,9 +264,6 @@ Future<void> initialisation() async {
       logger.log('Failed to get initial uri');
     }
 
-    if (isFdroidBuild && !offlineMode.value) {
-      await fetchAnnouncementOnly();
-    }
   } catch (e, stackTrace) {
     logger.log('Initialization Error', error: e, stackTrace: stackTrace);
   }

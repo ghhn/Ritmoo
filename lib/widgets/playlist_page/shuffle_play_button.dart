@@ -1,5 +1,5 @@
 /*
- *     Copyright (C) 2026 Valeri Gokadze
+ *     Copyright (C) 2026 ghhn
  *
  *     Ritmoo is free software: you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -16,9 +16,10 @@
  *
  *
  *     For more information about Ritmoo, including how to contribute,
- *     please visit: https://github.com/gokadzev/Ritmoo
+ *     please visit: https://github.com/ghhn/Ritmoo
  */
 
+import 'package:audio_service/audio_service.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:flutter/material.dart';
 import 'package:ritmoo/main.dart';
@@ -39,10 +40,12 @@ class ShufflePlayButton extends StatelessWidget {
         final shuffledSongs = List<Map>.from(songs.whereType<Map>());
         if (shuffledSongs.isEmpty) return;
         shuffledSongs.shuffle();
+        await audioHandler.setShuffleMode(AudioServiceShuffleMode.all);
         await audioHandler.addPlaylistToQueue(
           shuffledSongs,
           replace: true,
           startIndex: 0,
+          preserveShuffle: true,
         );
       },
     );

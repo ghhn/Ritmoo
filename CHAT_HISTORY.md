@@ -1,8 +1,8 @@
-# Historial de Chat - Sesión Musify Flutter
+# Historial de Chat - Sesión Ritmoo Flutter
 
 **Fecha:** 26-28 de Mayo, 2026  
-**Proyecto:** Musify Music Player - Aplicación Flutter para Android  
-**Repositorio:** https://github.com/ghhn/apmusic
+**Proyecto:** Ritmoo Music Player - Aplicación Flutter para Android  
+**Repositorio:** https://github.com/ghhn/Ritmoo
 
 ## Objetivos Completados
 
@@ -51,18 +51,18 @@
   - **Tamaño:** APK compilado exitosamente
 
 ### 6. Conectar Proyecto a GitHub ✅
-- **Comando:** `git init && git remote add origin https://github.com/ghhn/apmusic`
+- **Comando:** `git init && git remote add origin https://github.com/ghhn/Ritmoo`
 - **Resultado:** Remoto configurado correctamente
 - **Verificación:** `git remote -v` mostró origen configurado
 
 ### 7. Subir Código a GitHub ✅
-- **Comando:** `git commit -m "Add Musify Flutter app" && git push -u origin master`
+- **Comando:** `git commit -m "Add Ritmoo Flutter app" && git push -u origin master`
 - **Resultados:**
   - Commit ID: `53a72a7`
   - Archivos subidos: 500
   - Líneas de código: 51,477
   - Rama: `master` (sincronizada con `origin/master`)
-  - URL: https://github.com/ghhn/apmusic
+  - URL: https://github.com/ghhn/Ritmoo
 
 ## Problemas Encontrados y Soluciones
 
@@ -139,7 +139,7 @@ org.gradle.jvmargs=-Xmx4G -XX:MaxMetaspaceSize=2G -XX:ReservedCodeCacheSize=256m
 
 - **APK Debug:** `build/app/outputs/flutter-apk/app-github-debug.apk`
 - **Git Commit:** `53a72a7` (master branch)
-- **GitHub Remote:** https://github.com/ghhn/apmusic
+- **GitHub Remote:** https://github.com/ghhn/Ritmoo
 
 ## Próximos Pasos (Opcionales)
 
